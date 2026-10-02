@@ -337,5 +337,5 @@ async function generateAllVisuals(){
   progress.textContent="Batch complete • "+ok+"/"+buttons.length+" visuals ready"+(failed?" • "+failed+" failed":"")+" ✓";
   master.textContent=failed?"Retry / Generate All Visuals":"↻ Regenerate All Visuals";master.disabled=false;
 }
-document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateAllVisuals")generateAllVisuals()});
+var generateAllButton=document.getElementById("generateAllVisuals");if(generateAllButton)generateAllButton.onclick=function(ev){ev.preventDefault();generateAllVisuals()};
 document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
