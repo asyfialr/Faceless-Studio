@@ -316,6 +316,25 @@ app.post("/api/render/captions",async(req,res)=>{
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
+app.post("/api/ai/thumbnail",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
+    if(!projectId||!title)return res.status(400).json({error:"projectId and title required"});
+    const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_AI_TOKEN;
+    if(!account||!token)return res.status(503).json({error:"Cloudflare AI is not configured"});
+    const prompt="YouTube thumbnail background, 16:9 cinematic composition, highly clickable but not misleading, strong focal subject, dramatic lighting, clean composition, no text, no logos, no watermark. Video topic: "+title;
+    const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+account+"/ai/run/@cf/black-forest-labs/flux-1-schnell",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt,num_steps:8})});
+    if(!r.ok)throw new Error("Cloudflare image "+r.status+" "+(await r.text()).slice(0,300));
+    const ct=r.headers.get("content-type")||"";let buf;
+    if(ct.includes("application/json")){const d=await r.json(),b64=d?.result?.image||d?.result;if(typeof b64!=="string")throw new Error("Thumbnail image missing");buf=Buffer.from(b64.replace(/^data:image\/\w+;base64,/,""),"base64")}else buf=Buffer.from(await r.arrayBuffer());
+    const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
+    const out=join(projectDir,"thumbnail.jpg");await sharp(buf).resize(1280,720,{fit:"cover"}).jpeg({quality:90}).toFile(out);
+    const url="/media/"+projectId+"/thumbnail.jpg",metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
+    meta.thumbnailUrl=url;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,thumbnailUrl:url});
+  }catch(e){console.error("Thumbnail generation failed",e);res.status(500).json({error:e.message||"Thumbnail generation failed"})}
+});
+
 app.post("/api/render/shorts",async(req,res)=>{
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");
   if(!projectId)return res.status(400).json({error:"project_id_required"});
