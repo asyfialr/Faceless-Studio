@@ -147,6 +147,28 @@ $("readySchedule").onclick=function(){
   sessionStorage.setItem("reviewApproved","1");
   addProjects();
   $("reviewStatus").textContent="Approved ✓ Project is ready for the scheduling stage.";
-  $("readySchedule").textContent="Ready ✓";
+  $("readySchedule").textContent="Open Scheduler";$("readySchedule").disabled=false;$("readySchedule").onclick=function(){location.hash="scheduler"};
 };
 setupReview();
+
+function isoDate(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+(function initScheduler(){
+  var d=new Date();d.setDate(d.getDate()+1);
+  if(!$("scheduleDate").value)$("scheduleDate").value=isoDate(d);
+  if(sessionStorage.getItem("reviewApproved")==="1")$("scheduleStatus").textContent="Review approved. Choose a publishing plan.";
+})();
+$("buildSchedule").onclick=function(){
+  if(sessionStorage.getItem("reviewApproved")!=="1"){
+    $("scheduleStatus").textContent="Approve all 4 outputs in Review Studio first.";
+    return;
+  }
+  var date=$("scheduleDate").value,time=$("scheduleTime").value,tz=$("scheduleTimezone");
+  var interval=Number($("shortInterval").value);
+  if(!date||!time){$("scheduleStatus").textContent="Choose a date and time first.";return}
+  var base=new Date(date+"T12:00:00");
+  var rows=[{name:"Long Video",date:isoDate(base),time:time,type:"16:9"}];
+  for(var i=1;i<=3;i++){var d=new Date(base);d.setDate(d.getDate()+i*interval);rows.push({name:"Short #00"+i,date:isoDate(d),time:time,type:"9:16"})}
+  $("scheduleQueue").innerHTML=rows.map(function(x,i){return '<div class="schedule-item"><span class="order">'+(i+1)+'</span><div><strong>'+x.name+'</strong><small>'+x.date+' • '+x.time+' • '+tz.options[tz.selectedIndex].text+'</small></div><span class="tag">'+x.type+'</span></div>'}).join("")+'<div class="card schedule-ready"><strong>Schedule prepared ✓</strong><p class="muted">No video will be uploaded yet. YouTube connection comes in the next integration stage.</p></div>';
+  $("scheduleStatus").textContent="4 publishing slots prepared.";
+  sessionStorage.setItem("scheduleReady","1");
+};
