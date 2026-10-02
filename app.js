@@ -297,9 +297,24 @@ async function generateVisualPlan(){
     var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error);
     var scenes=(data.plan&&data.plan.scenes)||[];
     sessionStorage.setItem("visualPlan",JSON.stringify(scenes));
-    out.innerHTML=scenes.map(function(x){return '<div class="plan-scene"><strong>Scene '+x.scene+' • '+x.duration+'</strong><p>'+x.visualPrompt+'</p>'+(x.onScreenText?'<small>Text: '+x.onScreenText+'</small>':'')+'</div>'}).join("");
+    out.innerHTML=scenes.map(function(x,i){return '<div class="plan-scene" data-scene="'+i+'"><strong>Scene '+x.scene+' • '+x.duration+'</strong><p>'+x.visualPrompt+'</p>'+(x.onScreenText?'<small>Text: '+x.onScreenText+'</small>':'')+'<div class="script-actions"><button class="secondary generate-scene-media" data-scene="'+i+'">Generate Visual</button></div><div class="scene-media-status muted">Waiting</div><div class="scene-media-preview" hidden></div></div>'}).join("");
+    $("mediaSummary").textContent="Media queue: 0/"+scenes.length+" scenes prepared.";
     btn.textContent="↻ Regenerate Visual Plan";$("productionStatus").textContent="Visual plan ready ✓ "+scenes.length+" scenes prepared.";
   }catch(e){out.textContent="Visual planning failed: "+e.message;btn.textContent="Try Visual Plan Again"}
   finally{btn.disabled=false}
 }
 document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVisualPlan")generateVisualPlan()});
+
+function prepareSceneMedia(index,button){
+  var scenes=[];try{scenes=JSON.parse(sessionStorage.getItem("visualPlan")||"[]")}catch(e){}
+  var scene=scenes[index],card=button.closest(".plan-scene"),status=card&&card.querySelector(".scene-media-status");
+  if(!scene||!status)return;
+  button.disabled=true;button.textContent="Preparing…";status.textContent="Media prompt ready ✓";
+  var prepared={scene:scene.scene,prompt:scene.visualPrompt,status:"prompt-ready"};
+  var queue=[];try{queue=JSON.parse(sessionStorage.getItem("mediaQueue")||"[]")}catch(e){}
+  queue=queue.filter(function(x){return x.scene!==prepared.scene});queue.push(prepared);
+  sessionStorage.setItem("mediaQueue",JSON.stringify(queue));
+  var total=scenes.length;$("mediaSummary").textContent="Media queue: "+queue.length+"/"+total+" prompts prepared.";
+  button.textContent="Visual Prompt Ready";$("productionStatus").textContent="Scene "+scene.scene+" is ready for the media provider.";
+}
+document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
