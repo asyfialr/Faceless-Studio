@@ -232,11 +232,17 @@ app.post("/api/render/captions",async(req,res)=>{
     const wrap=(text,fs)=>{ctx.font="700 "+fs+"px CaptionInter";const ws=text.split(/\s+/),lines=[];let line="";for(const word of ws){const t=line?line+" "+word:word;if(ctx.measureText(t).width<=maxTextWidth||!line)line=t;else{lines.push(line);line=word}}if(line)lines.push(line);return lines};
     for(let i=0;i<chunks.length;i++){let fs=font,lines=wrap(chunks[i],fs);while((lines.length>2||lines.some(x=>ctx.measureText(x).width>maxTextWidth))&&fs>22){fs-=2;lines=wrap(chunks[i],fs)}ctx.font="700 "+fs+"px CaptionInter";ctx.lineWidth=Math.max(5,Math.round(fs*.16));const lh=Math.round(fs*1.18),col=i%cols,row=Math.floor(i/cols),cx=col*w+w/2,cy=row*rowH+rowH/2,top=cy-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,cx,yy,maxTextWidth);ctx.fillText(line,cx,yy,maxTextWidth)})}
     const sprite=join(projectDir,`cap-sprite-${label}.png`);await writeFile(sprite,canvas.toBuffer("image/png"));
-    const indexExpr=bounds.slice(0,-1).map((st,i)=>`if(between(t\\,${st.toFixed(3)}\\,${bounds[i+1].toFixed(3)})\\,${i}\\,`).join("")+"0"+")".repeat(chunks.length);
-    const xExpr=`mod(${indexExpr}\\,${cols})*${w}`,yExpr=`floor((${indexExpr})/${cols})*${rowH}`;
-    const filter=`[1:v]crop=${w}:${rowH}:'${xExpr}':'${yExpr}'[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
+    const cmdFile=join(projectDir,`cap-cmd-${label}.txt`);
+    const cmds=[];
+    for(let i=0;i<chunks.length;i++){
+      const col=i%cols,row=Math.floor(i/cols),t=Math.max(0,bounds[i]).toFixed(3);
+      cmds.push(`${t} crop@cap x ${col*w};`);
+      cmds.push(`${t} crop@cap y ${row*rowH};`);
+    }
+    await writeFile(cmdFile,cmds.join("\n"));
+    const filter=`[1:v]sendcmd=f='${cmdFile}',crop@cap=${w}:${rowH}:0:0[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
     await ff(["-y","-i",input,"-i",sprite,"-filter_complex",filter,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","copy","-movflags","+faststart",out],label+" caption render");
-    await rm(sprite,{force:true}).catch(()=>{});
+    await rm(sprite,{force:true}).catch(()=>{});await rm(cmdFile,{force:true}).catch(()=>{});
   };
   try{
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
