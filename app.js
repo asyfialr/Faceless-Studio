@@ -105,7 +105,12 @@ async function runProduction(){
   drawProduction(-1,productionStages.length-1);
   $("productionStatus").textContent="Production complete. Outputs are ready for review.";
   $("productionResult").innerHTML='<div class="result-card"><h3>Long Video</h3><p>16:9 • 8–10 min • Ready for review</p></div><div class="result-card"><h3>3 Shorts</h3><p>9:16 • Derived highlights • Ready for review</p><div class="result-actions"><button id="saveProject" class="primary">Save to Projects</button></div></div>';
-  $("saveProject").onclick=function(){addProjects();sessionStorage.setItem("projectMade","1");location.hash="projectsPage"};
+  $("saveProject").textContent="Review Outputs";
+  $("saveProject").onclick=function(){
+    sessionStorage.setItem("productionReady","1");
+    setupReview();
+    location.hash="reviewStudio";
+  };
   $("startProduction").disabled=false;$("startProduction").textContent="Run Again";
 }
 $("startProduction").onclick=runProduction;
@@ -114,3 +119,34 @@ if(sessionStorage.getItem("scriptReady")==="1"){
   $("productionTitle").textContent=selectedTitle;
   $("productionStatus").textContent="Script approved. Production is ready to start.";
 }
+
+var reviewStates=["pending","pending","pending","pending"];
+function setupReview(){
+  var ready=sessionStorage.getItem("productionReady")==="1";
+  $("reviewTitle").textContent=ready?selectedTitle:"No production ready";
+  if(ready){
+    $("youtubeTitle").value=selectedTitle;
+    $("youtubeDescription").value="A clear, faceless explainer about "+selectedTitle+".";
+    $("reviewStatus").textContent="Review the long video and all Shorts.";
+  }
+  renderReview();
+}
+function renderReview(){
+  var labels=[["Long Video","16:9 • 8–10 min"],["Short #001","9:16 • Highlight 1"],["Short #002","9:16 • Highlight 2"],["Short #003","9:16 • Highlight 3"]];
+  $("reviewOutputs").innerHTML=labels.map(function(x,i){
+    var state=reviewStates[i];
+    return '<div class="review-item '+state+'"><div><strong>'+x[0]+'</strong><small>'+x[1]+' • '+state+'</small></div><div class="review-buttons"><button class="mini '+(state==="approved"?"active":"")+'" data-review="'+i+'" data-state="approved">Approve</button><button class="mini '+(state==="rejected"?"active":"")+'" data-review="'+i+'" data-state="rejected">Reject</button></div></div>';
+  }).join("");
+  document.querySelectorAll("[data-review]").forEach(function(b){b.onclick=function(){reviewStates[Number(b.dataset.review)]=b.dataset.state;renderReview()}});
+  var approved=reviewStates.filter(function(x){return x==="approved"}).length;
+  $("approvalCount").textContent=approved+"/4 approved";
+  $("readySchedule").disabled=approved!==4;
+  if(approved===4)$("reviewStatus").textContent="Everything approved. Ready for scheduling.";
+}
+$("readySchedule").onclick=function(){
+  sessionStorage.setItem("reviewApproved","1");
+  addProjects();
+  $("reviewStatus").textContent="Approved ✓ Project is ready for the scheduling stage.";
+  $("readySchedule").textContent="Ready ✓";
+};
+setupReview();
