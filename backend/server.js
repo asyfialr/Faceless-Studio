@@ -195,32 +195,30 @@ app.post("/api/render/captions",async(req,res)=>{
   const narration=String(req.body?.narration||"").trim();
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
   const projectDir=join(storageRoot,projectId);
+  const words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
+  const esc=t=>t.replace(/\\/g,"\\\\").replace(/'/g,"’").replace(/:/g,"\\:").replace(/%/g,"\\%").replace(/,/g,"\\,");
+  const makeFilter=(chunks,duration,fontSize,yExpr)=>{
+    const step=duration/Math.max(1,chunks.length);
+    return chunks.map((txt,k)=>"drawtext=text='"+esc(txt)+"':fontcolor=white:fontsize="+fontSize+":borderw=4:bordercolor=black:x=(w-text_w)/2:y="+yExpr+":enable='between(t,"+(k*step).toFixed(3)+","+((k+1)*step).toFixed(3)+")'").join(",");
+  };
+  const run=async(input,out,vf,label)=>{
+    await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",input,"-vf",vf,"-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",out]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-3000));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-1000))))});
+  };
   try{
-    const words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
-    const chunks=[];for(let i=0;i<words.length;i+=4)chunks.push(words.slice(i,i+4).join(" "));
-    const escapeSrt=t=>t.replace(/-->/g,"→").replace(/[<>]/g,"");
-    const stamp=n=>{const ms=Math.max(0,Math.round(n*1000)),hh=String(Math.floor(ms/3600000)).padStart(2,"0"),mm=String(Math.floor(ms%3600000/60000)).padStart(2,"0"),ss=String(Math.floor(ms%60000/1000)).padStart(2,"0"),mmm=String(ms%1000).padStart(3,"0");return hh+":"+mm+":"+ss+","+mmm};
     const longInput=join(projectDir,"long.mp4"),longOut=join(projectDir,"long-captioned.mp4");
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
-    const longDuration=Math.max(20,Number(req.body?.longDuration)||120),longStep=longDuration/Math.max(1,longChunks.length);
-    const longSrt=longChunks.map((x,k)=>(k+1)+"\n"+stamp(k*longStep)+" --> "+stamp(Math.min(longDuration,(k+1)*longStep))+"\n"+escapeSrt(x)+"\n").join("\n");
-    const longSrtPath=join(projectDir,"long.srt");await writeFile(longSrtPath,longSrt);
-    const longVf="subtitles="+longSrtPath.replace(/\\/g,"/").replace(/:/g,"\\:")+":force_style='FontSize=24,Bold=1,Alignment=2,MarginV=55,Outline=3,Shadow=1'";
-    await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",longInput,"-vf",longVf,"-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",longOut]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Long caption code="+code+" signal="+(signal||"none")+" "+err.slice(-800))))});
-    const longUrl="/media/"+projectId+"/long-captioned.mp4";
-    const outputs=[];
+    const longDuration=Math.max(20,Number(req.body?.longDuration)||120);
+    await run(longInput,longOut,makeFilter(longChunks,longDuration,34,"h-text_h-70"),"Long caption");
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",outputs=[];
     for(let i=0;i<3;i++){
       const input=join(projectDir,`short-${i+1}.mp4`),out=join(projectDir,`short-${i+1}-captioned.mp4`);
-      const duration=20,segmentWords=words.slice(i*28,(i+1)*28),localChunks=[];for(let k=0;k<segmentWords.length;k+=4)localChunks.push(segmentWords.slice(k,k+4).join(" "));
-      const useChunks=localChunks.length?localChunks:chunks.slice(0,7),step=duration/Math.max(1,useChunks.length);
-      const srt=useChunks.map((x,k)=>(k+1)+"\n"+stamp(k*step)+" --> "+stamp(Math.min(duration,(k+1)*step))+"\n"+escapeSrt(x)+"\n").join("\n");
-      const srtPath=join(projectDir,`short-${i+1}.srt`);await writeFile(srtPath,srt);
-      const vf="subtitles="+srtPath.replace(/\\/g,"/").replace(/:/g,"\\:")+":force_style='FontSize=22,Bold=1,Alignment=2,MarginV=180,Outline=3,Shadow=1'";
-      await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",input,"-vf",vf,"-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",out]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Caption "+(i+1)+" code="+code+" signal="+(signal||"none")+" "+err.slice(-800))))});
+      const segmentWords=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<segmentWords.length;k+=4)chunks.push(segmentWords.slice(k,k+4).join(" "));
+      const use=chunks.length?chunks:[words.slice(0,4).join(" ")];
+      await run(input,out,makeFilter(use,20,44,"h-text_h-220"),"Short caption "+(i+1));
       outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4");
     }
-    const metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs});
+    const metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="drawtext";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"drawtext"});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
