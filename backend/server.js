@@ -286,20 +286,25 @@ app.post("/api/render/captions",async(req,res)=>{
     let longDuration=Number(req.body?.longDuration)||0;
     const voicePath=join(projectDir,"voice.wav");
     let voiceAvailable=false;try{await readFile(voicePath);voiceAvailable=true}catch{}
-    const timedWords=[]; // Precision transcript is decoupled from rendering until validated.
+    let timedWords=[];
+    try{
+      const report=JSON.parse(await readFile(join(projectDir,"word-timestamps-report.json"),"utf8"));
+      const cached=JSON.parse(await readFile(join(projectDir,"word-timestamps.json"),"utf8"));
+      if(report?.validated===true&&Array.isArray(cached)&&cached.length>=10)timedWords=cached.filter(x=>x.word&&Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start);
+    }catch{}
     if(!longDuration){
       longDuration=await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",join(projectDir,"long.mp4"),"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):resolve(67)});cp.on("error",reject)});
     }
     let longSpeechBounds=[];
     if(timedWords.length>=3){
       longChunks=[];longSpeechBounds=[];
-      for(let i=0;i<timedWords.length;i+=9){const group=timedWords.slice(i,i+9);longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,group[group.length-1].end))}
+      for(let i=0;i<timedWords.length;i+=9){const group=timedWords.slice(i,i+9),next=timedWords[i+9];longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,next?next.start:group[group.length-1].end))}
     }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
     for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
-    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=voiceAvailable?"voice-duration-weighted":"video-duration-weighted";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:voiceAvailable?"voice-duration-weighted":"video-duration-weighted"});
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
