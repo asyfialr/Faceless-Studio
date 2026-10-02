@@ -5,8 +5,17 @@ import sharp from "sharp";
 import {spawn} from "node:child_process";
 import {mkdtemp,writeFile,readFile,rm,mkdir} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join,dirname} from "node:path";
+import {fileURLToPath} from "node:url";
 import crypto from "node:crypto";
+
+const __dirname=dirname(fileURLToPath(import.meta.url));
+let captionFontCss="";
+try{
+  const fontPath=join(__dirname,"..","node_modules","@fontsource","inter","files","inter-latin-700-normal.woff");
+  const fontData=await readFile(fontPath);
+  captionFontCss="@font-face{font-family:CaptionInter;src:url(data:font/woff;base64,"+fontData.toString("base64")+") format('woff');font-weight:700;font-style:normal;}";
+}catch(e){console.error("Caption font load failed",e.message)}
 
 const app=express();
 const port=process.env.PORT||3000;
@@ -200,7 +209,7 @@ app.post("/api/render/captions",async(req,res)=>{
   const render=async(input,out,chunks,duration,w,font,y,label)=>{
     const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),bounds=[0];weights.forEach(x=>bounds.push(bounds[bounds.length-1]+duration*x/totalWeight));const parts=[];
     for(let i=0;i<chunks.length;i++){
-      const h=Math.max(96,font*2+20),svg=`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><style>.t{font-family:DejaVu Sans,Liberation Sans,sans-serif;font-size:${font}px;font-weight:700;fill:white;stroke:black;stroke-width:7px;paint-order:stroke;stroke-linejoin:round}</style><text class="t" x="50%" y="${font+14}" text-anchor="middle">${xml(chunks[i])}</text></svg>`;
+      const h=Math.max(96,font*2+20),svg=`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><style>${captionFontCss}.t{font-family:CaptionInter,sans-serif;font-size:${font}px;font-weight:700;fill:white;stroke:black;stroke-width:7px;paint-order:stroke;stroke-linejoin:round}</style><text class="t" x="50%" y="${font+14}" text-anchor="middle">${xml(chunks[i])}</text></svg>`;
       const img=join(projectDir,`cap-${label}-${i}.png`),part=join(projectDir,`cap-part-${label}-${i}.mp4`);await sharp(Buffer.from(svg)).png().toFile(img);
       const start=bounds[i].toFixed(3),len=Math.max(.25,bounds[i+1]-bounds[i]).toFixed(3);
       await ff(["-y","-ss",start,"-t",len,"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=0:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" part "+(i+1));
