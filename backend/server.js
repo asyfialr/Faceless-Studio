@@ -11,7 +11,7 @@ app.use(express.json({limit:"1mb"}));
 app.get("/api/health",(req,res)=>res.json({
   status:"ok",
   service:"Faceless Studio Backend",
-  version:"1.3.0"
+  version:"1.3.1"
 }));
 
 app.get("/api/capabilities",(req,res)=>res.json({
@@ -58,4 +58,30 @@ app.post("/api/ai/script",async(req,res)=>{
     return res.json({ok:true,provider:"openai",script:JSON.parse(raw)});
   }catch(error){return res.status(500).json({error:"ai_generation_failed",message:error.message})}
 });
+
+app.post("/api/ai/voice",async(req,res)=>{
+  const geminiKey=process.env.GEMINI_API_KEY;
+  const text=String(req.body?.text||"").trim();
+  if(!geminiKey)return res.status(503).json({error:"gemini_not_configured"});
+  if(!text)return res.status(400).json({error:"text_required"});
+  try{
+    const model=process.env.GEMINI_TTS_MODEL||"gemini-3.8-flash-lite-tts";
+    const r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{
+      method:"POST",
+      headers:{"x-goog-api-key":geminiKey,"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model,
+        input:[{type:"user_input",content:[{type:"text",text:text.slice(0,4000),annotations:[{type:"speech_metadata",style:"Natural confident American English YouTube documentary narration. Clear, warm, engaging, medium pace."}]}]}],
+        response_format:{type:"audio",mime_type:"audio/wav",sample_rate:24000},
+        generation_config:{speech_config:[{voice:"Kore"}]}
+      })
+    });
+    const data=await r.json();
+    if(!r.ok)return res.status(502).json({error:"gemini_tts_error",details:data?.error?.message||"Gemini TTS request failed"});
+    const audio=data?.output_audio?.data||data?.output?.find?.(x=>x.type==="audio")?.data;
+    if(!audio)return res.status(502).json({error:"audio_missing",details:"Gemini returned no audio data."});
+    res.json({ok:true,provider:"gemini",model,mimeType:"audio/wav",audio});
+  }catch(error){res.status(500).json({error:"tts_generation_failed",message:error.message})}
+});
+
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
