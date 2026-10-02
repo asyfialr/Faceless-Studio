@@ -35,4 +35,37 @@
 <section id="projectsPage" class="page"><div class="page-title"><p class="eyebrow">LIBRARY</p><h2>Projects</h2><p class="muted">Long videos and Shorts waiting for review.</p></div><div id="projects" class="projects empty">No projects yet. Create one from Dashboard or Ideas.</div></section>
 <section id="settings" class="page"><div class="page-title"><p class="eyebrow">PREFERENCES</p><h2>Settings</h2></div><div class="card form"><label>Niche<input id="niche" value="AI & Technology"></label><label>Target audience<select id="audience"><option>United States</option><option>Global English</option></select></label><label>Long video duration<select id="duration"><option>8–10 minutes</option><option>10–15 minutes</option></select></label><label>Shorts per long video<select id="shortsSetting"><option>3</option><option>2</option><option>1</option></select></label><label>Voice<select id="voice"><option>English US — Neutral</option><option>English US — Energetic</option></select></label><button id="saveSettings" class="primary">Save Settings</button><small id="savedText" class="muted"></small></div></section>
 <nav class="bottom-nav"><a href="#dashboard">Dashboard</a><a href="#ideas">Ideas</a><a href="#scriptStudio">Script</a><a href="#productionStudio">Produce</a><a href="#reviewStudio">Review</a><a href="#scheduler">Schedule</a><a href="#youtubeConnect">YouTube</a><a href="#projectsPage">Projects</a><a href="#settings">Settings</a></nav>
-</main><script src="app.js"></script></body></html>
+</main><script src="app.js"></script><script>
+(function(){
+  var btn=document.getElementById("connectYouTube");
+  var state=document.getElementById("backendState");
+  var info=document.getElementById("backendUrl");
+  var dot=document.getElementById("backendDot");
+  var ytState=document.getElementById("ytState");
+  var ytMessage=document.getElementById("ytMessage");
+  if(!btn||!state)return;
+  state.textContent="Ready to check";
+  info.textContent="Railway cloud";
+  async function liveCheck(){
+    btn.disabled=true; btn.textContent="Checking…"; state.textContent="Checking backend…";
+    try{
+      var r=await fetch("https://faceless-studio-production-c487.up.railway.app/api/health?ts="+Date.now(),{cache:"no-store"});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      var d=await r.json();
+      state.textContent="Backend Online ✓";
+      info.textContent=d.service+" • v"+d.version;
+      if(dot)dot.className="status-dot online";
+      if(ytState)ytState.textContent="Backend connected";
+      if(ytMessage)ytMessage.textContent="Railway API is online. Google OAuth is the next connection step.";
+    }catch(e){
+      state.textContent="Browser connection blocked";
+      info.textContent="API itself is online — browser request failed";
+      if(dot)dot.className="status-dot offline";
+    }finally{
+      btn.disabled=false; btn.textContent="Check Connection";
+    }
+  }
+  btn.onclick=liveCheck;
+})();
+</script>
+</body></html>
