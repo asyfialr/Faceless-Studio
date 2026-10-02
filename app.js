@@ -68,7 +68,7 @@ async function buildScriptDraft(){
     });
     var data=await r.json();
     if(!r.ok)throw new Error(data.message||data.details||data.error||"AI request failed");
-    var x=data.script;
+    var x=data.script; sessionStorage.setItem("aiNarration",x.narration||"");
     $("scriptOutput").classList.remove("empty");
     $("scriptOutput").innerHTML=
       '<div class="script-block"><h3>Hook</h3><p>'+escapeHtml(x.hook||"")+'</p></div>'+
@@ -263,3 +263,8 @@ $("connectYouTube").onclick=async function(){
   $("connectYouTube").disabled=false;
   $("connectYouTube").textContent="Check Connection";
 };
+
+document.addEventListener("click",function(e){
+  if(e.target&&e.target.id==="previewVoice")previewNarrationVoice();
+  if(e.target&&e.target.id==="stopVoice")stopNarrationVoice();
+});
