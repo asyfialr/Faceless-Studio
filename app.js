@@ -185,3 +185,25 @@ $("connectYouTube").onclick=function(){
   setTimeout(function(){$("connectYouTube").disabled=false;$("connectYouTube").textContent="Check Connection"},1200);
 };
 renderYouTubeSetup();
+
+var activePreview=0;
+const previewItems=[["Long Video","16:9","landscape"],["Short #001","9:16","portrait"],["Short #002","9:16","portrait"],["Short #003","9:16","portrait"]];
+function selectPreview(i){
+  activePreview=i;
+  var x=previewItems[i];
+  $("previewName").textContent=x[0];$("previewBadge").textContent=x[1];
+  $("videoStage").className="video-stage "+x[2];
+  document.querySelectorAll(".preview-choice").forEach(function(b){b.classList.toggle("active",Number(b.dataset.preview)===i)});
+  $("previewMessage").textContent=reviewStates[i]==="approved"?"Approved ✓":"No rendered video yet — player wiring is ready.";
+}
+document.querySelectorAll(".preview-choice").forEach(function(b){b.onclick=function(){selectPreview(Number(b.dataset.preview))}});
+$("previewApprove").onclick=function(){
+  if(sessionStorage.getItem("productionReady")!=="1"){$("previewMessage").textContent="Complete Production first.";return}
+  reviewStates[activePreview]="approved";renderReview();selectPreview(activePreview);
+};
+$("previewRegenerate").onclick=function(){
+  if(sessionStorage.getItem("productionReady")!=="1"){$("previewMessage").textContent="Complete Production first.";return}
+  reviewStates[activePreview]="pending";renderReview();
+  $("previewMessage").textContent="Marked for regeneration. Real regeneration will be connected to the renderer backend.";
+};
+selectPreview(0);
