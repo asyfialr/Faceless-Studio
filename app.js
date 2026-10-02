@@ -366,7 +366,14 @@ async function renderMp4(){
     var r=await fetch(API_BASE+"/api/render/mp4",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scenes:scenes,audio:voice.src})});
     if(!r.ok){var d=await r.json().catch(function(){return {}});throw new Error(d.message||d.error||"Render failed")}
     var blob=await r.blob();if(player.dataset.url)URL.revokeObjectURL(player.dataset.url);var url=URL.createObjectURL(blob);player.dataset.url=url;player.src=url;player.style.display="block";
-    status.textContent="MP4 render ready ✓ "+(blob.size/1024/1024).toFixed(1)+" MB";btn.textContent="↻ Render Again";player.play().catch(function(){});
+    status.textContent="MP4 render ready ✓ "+(blob.size/1024/1024).toFixed(1)+" MB";btn.textContent="↻ Render Again";
+    var reviewPlayer=document.getElementById("previewVideo"),placeholder=document.getElementById("previewPlaceholder");
+    if(reviewPlayer){if(reviewPlayer.dataset.url)URL.revokeObjectURL(reviewPlayer.dataset.url);reviewPlayer.dataset.url=url;reviewPlayer.src=url}
+    if(placeholder)placeholder.style.display="none";
+    sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
+    drawProduction(-1,productionStages.length-1);
+    $("productionStatus").textContent="Long MP4 ready ✓ Open Review to inspect and approve.";
+    player.play().catch(function(){});
   }catch(e){status.textContent="Render failed: "+e.message;btn.textContent="Try Render Again"}
   finally{btn.disabled=false}
 }
