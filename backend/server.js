@@ -226,14 +226,16 @@ app.post("/api/render/captions",async(req,res)=>{
   };
   const render=async(input,out,chunks,duration,w,font,y,label,speechBounds)=>{
     const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),fallback=[0];weights.forEach(x=>fallback.push(fallback[fallback.length-1]+duration*x/totalWeight));const bounds=Array.isArray(speechBounds)&&speechBounds.length===chunks.length+1?speechBounds:fallback;
-    const maxTextWidth=Math.round(w*(label==="long"?.82:.78)),rowH=label==="long"?118:142,spriteW=w,spriteH=rowH*chunks.length;
+    const maxTextWidth=Math.round(w*(label==="long"?.82:.78)),rowH=label==="long"?118:142;
+    const cols=Math.min(8,Math.max(1,Math.ceil(Math.sqrt(chunks.length)))),rows=Math.ceil(chunks.length/cols),spriteW=w*cols,spriteH=rowH*rows;
     const canvas=createCanvas(spriteW,spriteH),ctx=canvas.getContext("2d");ctx.clearRect(0,0,spriteW,spriteH);ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.strokeStyle="black";ctx.fillStyle="white";
     const wrap=(text,fs)=>{ctx.font="700 "+fs+"px CaptionInter";const ws=text.split(/\s+/),lines=[];let line="";for(const word of ws){const t=line?line+" "+word:word;if(ctx.measureText(t).width<=maxTextWidth||!line)line=t;else{lines.push(line);line=word}}if(line)lines.push(line);return lines};
-    for(let i=0;i<chunks.length;i++){let fs=font,lines=wrap(chunks[i],fs);while((lines.length>2||lines.some(x=>ctx.measureText(x).width>maxTextWidth))&&fs>22){fs-=2;lines=wrap(chunks[i],fs)}ctx.font="700 "+fs+"px CaptionInter";ctx.lineWidth=Math.max(5,Math.round(fs*.16));const lh=Math.round(fs*1.18),cy=i*rowH+rowH/2,top=cy-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)})}
+    for(let i=0;i<chunks.length;i++){let fs=font,lines=wrap(chunks[i],fs);while((lines.length>2||lines.some(x=>ctx.measureText(x).width>maxTextWidth))&&fs>22){fs-=2;lines=wrap(chunks[i],fs)}ctx.font="700 "+fs+"px CaptionInter";ctx.lineWidth=Math.max(5,Math.round(fs*.16));const lh=Math.round(fs*1.18),col=i%cols,row=Math.floor(i/cols),cx=col*w+w/2,cy=row*rowH+rowH/2,top=cy-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,cx,yy,maxTextWidth);ctx.fillText(line,cx,yy,maxTextWidth)})}
     const sprite=join(projectDir,`cap-sprite-${label}.png`);await writeFile(sprite,canvas.toBuffer("image/png"));
-    const expr=bounds.slice(0,-1).map((st,i)=>`if(between(t\\,${st.toFixed(3)}\\,${bounds[i+1].toFixed(3)})\\,${i*rowH}\\,`).join("")+"0"+")".repeat(chunks.length);
-    const filter=`[1:v]crop=${w}:${rowH}:0:'${expr}'[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
-    await ff(["-y","-i",input,"-loop","1","-i",sprite,"-filter_complex",filter,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","copy","-shortest","-movflags","+faststart",out],label+" caption render");
+    const indexExpr=bounds.slice(0,-1).map((st,i)=>`if(between(t\\,${st.toFixed(3)}\\,${bounds[i+1].toFixed(3)})\\,${i}\\,`).join("")+"0"+")".repeat(chunks.length);
+    const xExpr=`mod(${indexExpr}\\,${cols})*${w}`,yExpr=`floor((${indexExpr})/${cols})*${rowH}`;
+    const filter=`[1:v]crop=${w}:${rowH}:'${xExpr}':'${yExpr}'[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
+    await ff(["-y","-i",input,"-i",sprite,"-filter_complex",filter,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","copy","-movflags","+faststart",out],label+" caption render");
     await rm(sprite,{force:true}).catch(()=>{});
   };
   try{
