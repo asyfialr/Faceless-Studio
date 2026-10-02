@@ -298,7 +298,7 @@ app.post("/api/render/captions",async(req,res)=>{
     let longSpeechBounds=[];
     if(timedWords.length>=3){
       longChunks=[];longSpeechBounds=[];
-      for(let i=0;i<timedWords.length;i+=9){const group=timedWords.slice(i,i+9),next=timedWords[i+9];longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,next?next.start:group[group.length-1].end))}
+      const usableTimedWords=timedWords.filter(x=>x.start<longDuration+.25);for(let i=0;i<usableTimedWords.length;i+=12){const group=usableTimedWords.slice(i,i+12),next=usableTimedWords[i+12];if(!group.length)continue;longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,next?next.start:group[group.length-1].end))}
     }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
