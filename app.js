@@ -268,3 +268,21 @@ document.addEventListener("click",function(e){
   if(e.target&&e.target.id==="previewVoice")previewNarrationVoice();
   if(e.target&&e.target.id==="stopVoice")stopNarrationVoice();
 });
+
+async function generateServerVoice(){
+  var narration=sessionStorage.getItem("aiNarration")||"";
+  if(!narration){$("productionStatus").textContent="No narration stored. Generate the AI script again first.";return}
+  var btn=$("generateVoice"),player=$("voicePlayer");
+  btn.disabled=true;btn.textContent="Generating voice…";$("productionStatus").textContent="Gemini is generating WAV narration…";
+  try{
+    var r=await fetch(API_BASE+"/api/ai/voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:narration})});
+    var data=await r.json();
+    if(!r.ok)throw new Error(data.details||data.message||data.error||"TTS request failed");
+    player.src="data:"+(data.mimeType||"audio/wav")+";base64,"+data.audio;
+    player.style.display="block";player.load();
+    $("productionStatus").textContent="Voice generated ✓ Press Play on the audio player.";
+    btn.textContent="↻ Regenerate Voice";
+  }catch(e){$("productionStatus").textContent="Voice generation failed: "+e.message;btn.textContent="Try Voice Again"}
+  finally{btn.disabled=false}
+}
+document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVoice")generateServerVoice()});
