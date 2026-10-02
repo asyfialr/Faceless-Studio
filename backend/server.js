@@ -11,7 +11,7 @@ app.use(express.json({limit:"1mb"}));
 app.get("/api/health",(req,res)=>res.json({
   status:"ok",
   service:"Faceless Studio Backend",
-  version:"1.4.1"
+  version:"1.6.0"
 }));
 
 app.get("/api/capabilities",(req,res)=>res.json({
@@ -75,6 +75,27 @@ app.post("/api/ai/script",async(req,res)=>{
     const raw=data.output_text||data.output?.flatMap(x=>x.content||[]).map(x=>x.text||"").join("")||"";
     return res.json({ok:true,provider:"openai",script:JSON.parse(raw)});
   }catch(error){return res.status(500).json({error:"ai_generation_failed",message:error.message})}
+});
+
+app.post("/api/ai/image",async(req,res)=>{
+  const accountId=process.env.CLOUDFLARE_ACCOUNT_ID;
+  const token=process.env.CLOUDFLARE_AI_TOKEN;
+  const prompt=String(req.body?.prompt||"").trim();
+  if(!accountId||!token)return res.status(503).json({error:"cloudflare_not_configured",message:"Cloudflare Workers AI is not configured."});
+  if(!prompt)return res.status(400).json({error:"prompt_required"});
+  try{
+    const model="@cf/black-forest-labs/flux-1-schnell";
+    const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(accountId)+"/ai/run/"+model,{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+      body:JSON.stringify({prompt:prompt.slice(0,2048),steps:4})
+    });
+    const data=await r.json();
+    if(!r.ok||data?.success===false)return res.status(r.status||502).json({error:"cloudflare_image_error",details:data?.errors?.map(e=>e.message).join("; ")||"Cloudflare image generation failed"});
+    const image=data?.result?.image;
+    if(!image)return res.status(502).json({error:"image_missing",details:"Cloudflare returned no image."});
+    return res.json({ok:true,provider:"cloudflare",model,mimeType:"image/jpeg",image});
+  }catch(error){return res.status(500).json({error:"image_generation_failed",message:error.message})}
 });
 
 app.post("/api/ai/visual-plan",async(req,res)=>{
