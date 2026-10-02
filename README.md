@@ -18,3 +18,5 @@ Open `index.html` in a browser.
 
 ## Next
 V0.2 will connect real AI services, rendering, persistence, and YouTube integration.
+
+Pages activated and deployment ready.
