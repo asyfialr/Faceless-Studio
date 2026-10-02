@@ -302,7 +302,15 @@ app.post("/api/render/captions",async(req,res)=>{
     }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
-    for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
+    for(let i=0;i<3;i++){
+      const clipStart=i*20,clipEnd=clipStart+20;let use=[],shortBounds=[];
+      if(timedWords.length>=3){
+        const sw=timedWords.filter(x=>x.start<clipEnd&&x.end>clipStart);
+        for(let k=0;k<sw.length;k+=5){const group=sw.slice(k,k+5),next=sw[k+5];if(!group.length)continue;use.push(group.map(x=>x.word).join(" "));if(!shortBounds.length)shortBounds.push(Math.max(0,group[0].start-clipStart));shortBounds.push(Math.min(20,Math.max(0,(next?next.start:group[group.length-1].end)-clipStart)))}
+      }
+      if(!use.length){const sw=words.slice(i*28,(i+1)*28);for(let k=0;k<sw.length;k+=4)use.push(sw.slice(k,k+4).join(" "));if(!use.length)use=[words.slice(0,4).join(" ")];shortBounds=[]}
+      await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1),shortBounds);outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")
+    }
     const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
     res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
