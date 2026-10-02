@@ -305,16 +305,22 @@ async function generateVisualPlan(){
 }
 document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVisualPlan")generateVisualPlan()});
 
-function prepareSceneMedia(index,button){
+async function prepareSceneMedia(index,button){
   var scenes=[];try{scenes=JSON.parse(sessionStorage.getItem("visualPlan")||"[]")}catch(e){}
-  var scene=scenes[index],card=button.closest(".plan-scene"),status=card&&card.querySelector(".scene-media-status");
-  if(!scene||!status)return;
-  button.disabled=true;button.textContent="Preparing…";status.textContent="Media prompt ready ✓";
-  var prepared={scene:scene.scene,prompt:scene.visualPrompt,status:"prompt-ready"};
-  var queue=[];try{queue=JSON.parse(sessionStorage.getItem("mediaQueue")||"[]")}catch(e){}
-  queue=queue.filter(function(x){return x.scene!==prepared.scene});queue.push(prepared);
-  sessionStorage.setItem("mediaQueue",JSON.stringify(queue));
-  var total=scenes.length;$("mediaSummary").textContent="Media queue: "+queue.length+"/"+total+" prompts prepared.";
-  button.textContent="Visual Prompt Ready";$("productionStatus").textContent="Scene "+scene.scene+" is ready for the media provider.";
+  var scene=scenes[index],card=button.closest(".plan-scene"),status=card&&card.querySelector(".scene-media-status"),preview=card&&card.querySelector(".scene-media-preview");
+  if(!scene||!status||!preview)return;
+  button.disabled=true;button.textContent="Generating…";status.textContent="Cloudflare AI is creating this scene…";
+  try{
+    var r=await fetch(API_BASE+"/api/ai/image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:scene.visualPrompt})});
+    var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error||"Image generation failed");
+    preview.hidden=false;preview.innerHTML='<img src="data:'+(data.mimeType||"image/jpeg")+';base64,'+data.image+'" alt="Generated visual for scene '+scene.scene+'" style="width:100%;border-radius:14px;margin-top:10px">';
+    status.textContent="AI visual ready ✓";button.textContent="↻ Regenerate Visual";
+    var queue=[];try{queue=JSON.parse(sessionStorage.getItem("mediaQueue")||"[]")}catch(e){}
+    queue=queue.filter(function(x){return x.scene!==scene.scene});queue.push({scene:scene.scene,prompt:scene.visualPrompt,status:"generated"});
+    sessionStorage.setItem("mediaQueue",JSON.stringify(queue));
+    $("mediaSummary").textContent="Media queue: "+queue.length+"/"+scenes.length+" visuals generated.";
+    $("productionStatus").textContent="Scene "+scene.scene+" visual generated ✓";
+  }catch(e){status.textContent="Visual failed: "+e.message;button.textContent="Try Generate Visual Again"}
+  finally{button.disabled=false}
 }
 document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
