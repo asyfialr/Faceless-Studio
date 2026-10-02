@@ -2,9 +2,10 @@ import express from "express";
 import cors from "cors";
 import ffmpegPath from "ffmpeg-static";
 import {spawn} from "node:child_process";
-import {mkdtemp,writeFile,readFile,rm} from "node:fs/promises";
+import {mkdtemp,writeFile,readFile,rm,mkdir} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import crypto from "node:crypto";
 
 const app=express();
 const port=process.env.PORT||3000;
@@ -177,9 +178,24 @@ app.post("/api/render/mp4",async(req,res)=>{
       const args=["-y","-f","concat","-safe","0","-i",join(dir,"list.txt"),"-i",join(dir,"voice.wav"),"-vf","scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p","-c:v","libx264","-preset","veryfast","-r","30","-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",out];
       const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-4000));cp.on("error",reject);cp.on("close",code=>code===0?resolve():reject(new Error("FFmpeg exited "+code+" "+err.slice(-1200))));
     });
-    const video=await readFile(out);res.setHeader("Content-Type","video/mp4");res.setHeader("Content-Length",video.length);res.send(video);
+    const video=await readFile(out);
+    const projectId=String(req.body?.projectId||crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g,"");
+    const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
+    await writeFile(join(projectDir,"long.mp4"),video);
+    const meta={id:projectId,title:String(req.body?.title||"Untitled project"),updatedAt:new Date().toISOString(),longVideoUrl:"/media/"+projectId+"/long.mp4"};
+    await writeFile(join(projectDir,"project.json"),JSON.stringify(meta,null,2));
+    res.setHeader("X-Project-Id",projectId);res.setHeader("X-Video-Url",meta.longVideoUrl);
+    res.setHeader("Content-Type","video/mp4");res.setHeader("Content-Length",video.length);res.send(video);
   }catch(error){res.status(500).json({error:"render_failed",message:error.message})}
   finally{await rm(dir,{recursive:true,force:true}).catch(()=>{})}
+});
+
+const storageRoot=process.env.STORAGE_DIR||"/data";
+app.use("/media",express.static(storageRoot,{maxAge:"1h"}));
+app.get("/api/projects/:id",async(req,res)=>{
+  const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");
+  try{const raw=await readFile(join(storageRoot,id,"project.json"),"utf8");res.json(JSON.parse(raw))}
+  catch(e){res.status(404).json({error:"project_not_found"})}
 });
 
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
