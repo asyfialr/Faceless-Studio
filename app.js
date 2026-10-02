@@ -1,53 +1,13 @@
 const stages=["Researching topic","Writing script","Generating voice","Preparing visuals","Rendering long video","Extracting Shorts","Adding captions","Ready for review"];
-const pipeline=document.getElementById("pipeline");
-const progressBar=document.getElementById("progressBar");
-const progressLabel=document.getElementById("progressLabel");
-const createBtn=document.getElementById("createBtn");
-const statusText=document.getElementById("statusText");
-const projects=document.getElementById("projects");
-const longCount=document.getElementById("longCount");
-const shortCount=document.getElementById("shortCount");
-const queueCount=document.getElementById("queueCount");
-
-function drawStages(active=-1){
-  pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("");
-}
-drawStages();
-
-function addProjects(){
-  projects.classList.remove("empty");
-  projects.innerHTML=`
-    <div class="project"><div><strong>Long Video #001</strong><small>8–10 min • Ready for review</small></div><span>16:9</span></div>
-    <div class="project"><div><strong>Short #001</strong><small>35 sec • Ready</small></div><span>9:16</span></div>
-    <div class="project"><div><strong>Short #002</strong><small>42 sec • Ready</small></div><span>9:16</span></div>
-    <div class="project"><div><strong>Short #003</strong><small>29 sec • Ready</small></div><span>9:16</span></div>`;
-}
-
-createBtn.addEventListener("click",async()=>{
-  createBtn.disabled=true;
-  queueCount.textContent="1";
-  longCount.textContent="0/1";
-  shortCount.textContent="0/3";
-  for(let i=0;i<stages.length;i++){
-    drawStages(i);
-    const pct=Math.round(((i+1)/stages.length)*100);
-    progressBar.style.width=pct+"%";
-    progressLabel.textContent=pct+"%";
-    statusText.textContent=stages[i]+"…";
-    if(i===4) longCount.textContent="1/1";
-    if(i>=5) shortCount.textContent=Math.min(3,i-4)+"/3";
-    await new Promise(r=>setTimeout(r,550));
-  }
-  shortCount.textContent="3/3";
-  queueCount.textContent="0";
-  statusText.textContent="Production complete. Ready for review and scheduling.";
-  addProjects();
-  createBtn.disabled=false;
-  createBtn.textContent="Create Another";
-});
-
-document.getElementById("autopilot").addEventListener("change",e=>{
-  statusText.textContent=e.target.checked
-    ?"Autopilot enabled. Future runs can be scheduled automatically."
-    :"Autopilot off. Manual approval mode active.";
-});
+const ideas=[["Why AI Agents Are Becoming the Next Big Tech Shift","AI","High potential"],["7 Technologies That Could Change Everyday Life by 2030","Future Tech","Evergreen"],["The Hidden AI Tools People Are Using to Save Hours Every Week","Productivity","Strong hook"],["What Happens When AI Can Work Without Constant Human Prompts?","AI","Explainer"]];
+let selectedTitle="Untitled AI Video", projectMade=false;
+const $=id=>document.getElementById(id), pipeline=$("pipeline"), progressBar=$("progressBar"), progressLabel=$("progressLabel"), statusText=$("statusText"), createBtn=$("createBtn");
+function drawStages(active=-1){pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("")}
+function renderIdeas(){$("ideaList").innerHTML=ideas.map((x,i)=>`<article class="idea"><div class="idea-top"><h3>${x[0]}</h3><span class="tag">${x[2]}</span></div><p>${x[1]} • English US • Long + Shorts</p><button class="secondary use-idea" data-i="${i}">Use Idea</button></article>`).join("");document.querySelectorAll(".use-idea").forEach(b=>b.onclick=()=>{selectedTitle=ideas[+b.dataset.i][0];showPage("dashboard");statusText.textContent="Idea selected: "+selectedTitle;createBtn.textContent="Create This Video"})}
+function showPage(id){document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===id));document.querySelectorAll(".bottom-nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===id));scrollTo({top:0,behavior:"smooth"})}
+document.querySelectorAll(".bottom-nav button").forEach(b=>b.onclick=()=>showPage(b.dataset.page));
+function addProjects(){projectMade=true;$("projects").classList.remove("empty");$("projects").innerHTML=`<div class="project"><div><strong>${selectedTitle}</strong><small>Long • 8–10 min • Ready for review</small></div><span>16:9</span></div>`+[1,2,3].map((n)=>`<div class="project"><div><strong>Short #00${n}</strong><small>Derived from long video • Ready</small></div><span>9:16</span></div>`).join("")}
+createBtn.onclick=async()=>{createBtn.disabled=true;$("queueCount").textContent="1";$("longCount").textContent="0/1";$("shortCount").textContent="0/3";for(let i=0;i<stages.length;i++){drawStages(i);let pct=Math.round((i+1)/stages.length*100);progressBar.style.width=pct+"%";progressLabel.textContent=pct+"%";statusText.textContent=stages[i]+"…";if(i===4)$("longCount").textContent="1/1";if(i>=5)$("shortCount").textContent=Math.min(3,i-4)+"/3";await new Promise(r=>setTimeout(r,420))}$("shortCount").textContent="3/3";$("queueCount").textContent="0";statusText.textContent="Production complete. Ready for review and scheduling.";addProjects();createBtn.disabled=false;createBtn.textContent="Create Another"};
+$("autopilot").onchange=e=>{localStorage.autopilot=e.target.checked?"1":"0";statusText.textContent=e.target.checked?"Autopilot enabled. Future runs can be scheduled automatically.":"Autopilot off. Manual approval mode active."};
+$("autopilot").checked=localStorage.autopilot==="1";$("saveSettings").onclick=()=>{["niche","audience","duration","shortsSetting","voice"].forEach(k=>localStorage[k]=$(k).value);$("savedText").textContent="Saved on this device ✓";setTimeout(()=>$("savedText").textContent="",1800)};["niche","audience","duration","shortsSetting","voice"].forEach(k=>{if(localStorage[k])$(k).value=localStorage[k]});
+drawStages();renderIdeas();
