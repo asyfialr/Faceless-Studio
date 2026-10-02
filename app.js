@@ -355,6 +355,22 @@ function buildSceneMotion(){
   status.textContent="Motion plan ready ✓ "+plan.length+" scenes • "+ready+" visuals available";
   btn.textContent="↻ Rebuild Scene Motion";$("productionStatus").textContent="Scene motion plan ready ✓";
 }
+async function renderMp4(){
+  var btn=document.getElementById("renderMp4"),status=document.getElementById("renderStatus"),player=document.getElementById("renderedVideo"),voice=document.getElementById("voicePlayer");
+  var cards=Array.from(document.querySelectorAll(".plan-scene")),motion=[];try{motion=JSON.parse(sessionStorage.getItem("motionPlan")||"[]")}catch(e){}
+  var scenes=cards.map(function(card,i){var img=card.querySelector(".scene-media-preview img");return {image:img?img.src:"",duration:motion[i]?.duration||"5s",motion:motion[i]?.motion||"slow-zoom-in"}});
+  if(!scenes.length||scenes.some(function(x){return !x.image})){status.textContent="Generate all scene visuals first.";return}
+  if(!voice||!voice.src||!voice.src.startsWith("data:audio")){status.textContent="Generate Voice first.";return}
+  btn.disabled=true;btn.textContent="Rendering…";status.textContent="Uploading assets and rendering MP4 on Railway…";
+  try{
+    var r=await fetch(API_BASE+"/api/render/mp4",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scenes:scenes,audio:voice.src})});
+    if(!r.ok){var d=await r.json().catch(function(){return {}});throw new Error(d.message||d.error||"Render failed")}
+    var blob=await r.blob();if(player.dataset.url)URL.revokeObjectURL(player.dataset.url);var url=URL.createObjectURL(blob);player.dataset.url=url;player.src=url;player.style.display="block";
+    status.textContent="MP4 render ready ✓ "+(blob.size/1024/1024).toFixed(1)+" MB";btn.textContent="↻ Render Again";player.play().catch(function(){});
+  }catch(e){status.textContent="Render failed: "+e.message;btn.textContent="Try Render Again"}
+  finally{btn.disabled=false}
+}
+var renderButton=document.getElementById("renderMp4");if(renderButton)renderButton.onclick=function(e){e.preventDefault();renderMp4()};
 var motionButton=document.getElementById("buildMotionPlan");if(motionButton)motionButton.onclick=function(e){e.preventDefault();buildSceneMotion()};
 var generateAllButton=document.getElementById("generateAllVisuals");if(generateAllButton)generateAllButton.onclick=function(ev){ev.preventDefault();generateAllVisuals()};
 document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
