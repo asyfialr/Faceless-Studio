@@ -209,17 +209,19 @@ $("previewRegenerate").onclick=function(){
 selectPreview(0);
 
 const API_BASE="https://faceless-studio-production-c487.up.railway.app";
+async function fetchWithTimeout(url,ms){
+  const controller=new AbortController();
+  const timer=setTimeout(function(){controller.abort()},ms);
+  try{return await fetch(url,{cache:"no-store",signal:controller.signal})}
+  finally{clearTimeout(timer)}
+}
 async function checkBackend(){
   $("backendState").textContent="Checking backend…";
   $("backendDot").className="status-dot";
   try{
-    const [healthRes,capRes]=await Promise.all([
-      fetch(API_BASE+"/api/health",{cache:"no-store"}),
-      fetch(API_BASE+"/api/capabilities",{cache:"no-store"})
-    ]);
-    if(!healthRes.ok||!capRes.ok)throw new Error("Backend unavailable");
+    const healthRes=await fetchWithTimeout(API_BASE+"/api/health",8000);
+    if(!healthRes.ok)throw new Error("Health check failed");
     const health=await healthRes.json();
-    const caps=await capRes.json();
     $("backendState").textContent="Backend Online ✓";
     $("backendUrl").textContent=health.service+" • v"+health.version;
     $("backendDot").className="status-dot online";
@@ -227,15 +229,22 @@ async function checkBackend(){
     $("ytMessage").textContent="Railway API is online. Google OAuth is the next connection step.";
     $("ytDot").className="status-dot ready";
     ytChecks[1][1]="Ready";
-    ytChecks[2][1]=caps.youtube?"Ready":"Required";
     renderYouTubeSetup();
+    try{
+      const capRes=await fetchWithTimeout(API_BASE+"/api/capabilities",4000);
+      if(capRes.ok){
+        const caps=await capRes.json();
+        ytChecks[2][1]=caps.youtube?"Ready":"Required";
+        renderYouTubeSetup();
+      }
+    }catch(ignore){}
     return true;
   }catch(e){
     $("backendState").textContent="Backend Offline";
-    $("backendUrl").textContent="Could not reach Railway API";
+    $("backendUrl").textContent="Railway API did not respond";
     $("backendDot").className="status-dot offline";
     $("ytState").textContent="Backend unavailable";
-    $("ytMessage").textContent="Check Railway deployment and try again.";
+    $("ytMessage").textContent="Railway health check failed. Try again.";
     return false;
   }
 }
