@@ -11,12 +11,13 @@ const ideaTemplates=[
 let selectedTitle="Untitled AI Video", projectMade=false;
 const $=id=>document.getElementById(id), pipeline=$("pipeline"), progressBar=$("progressBar"), progressLabel=$("progressLabel"), statusText=$("statusText"), createBtn=$("createBtn");
 function drawStages(active=-1){pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("")}
-function renderIdeas(){$("ideaList").innerHTML=ideas.map((x,i)=>`<article class="idea"><div class="idea-top"><h3>${x[0]}</h3><span class="tag">${x[2]}</span></div><p>${x[1]} • English US • Long + Shorts</p><button class="secondary use-idea" data-i="${i}">Use Idea</button></article>`).join("");document.querySelectorAll(".use-idea").forEach(b=>b.onclick=()=>{selectedTitle=ideas[+b.dataset.i][0];showPage("dashboard");statusText.textContent="Idea selected: "+selectedTitle;createBtn.textContent="Create This Video"})}
+function renderIdeas(){$("ideaList").innerHTML=ideas.map((x,i)=>`<article class="idea"><div class="idea-top"><h3>${x[0]}</h3><span class="tag">${x[2]}</span></div><p>${x[1]} • English US • Long + Shorts</p><button class="secondary use-idea" data-i="${i}">Use Idea</button></article>`).join("");document.querySelectorAll(".use-idea").forEach(b=>b.onclick=()=>{selectedTitle=ideas[+b.dataset.i][0];showPage("scriptStudio");$("scriptTitle").textContent=selectedTitle;$("scriptOutput").innerHTML="Idea selected. Generate a draft to continue.";$("scriptOutput").classList.add("empty")})}
 function showPage(id){
   document.querySelectorAll(".page").forEach(function(p){p.classList.toggle("active",p.id===id)});
   document.querySelectorAll(".bottom-nav button").forEach(function(b){b.classList.toggle("active",b.getAttribute("data-page")===id)});
   try{window.scrollTo({top:0,behavior:"smooth"})}catch(e){window.scrollTo(0,0)}
 }
+window.addEventListener("hashchange",function(){var id=location.hash.slice(1);if(document.getElementById(id))showPage(id)});
 document.querySelector(".bottom-nav").addEventListener("click",function(e){
   var button=e.target.closest("button[data-page]");
   if(!button)return;
@@ -45,3 +46,23 @@ function generatePrototypeIdeas(){
 $("generateIdeas").onclick=generatePrototypeIdeas;
 if(localStorage.niche)$("ideaNiche").value=localStorage.niche;
 if(localStorage.audience)$("ideaAudience").value=localStorage.audience;
+
+function buildScriptDraft(){
+  if(!selectedTitle||selectedTitle==="Untitled AI Video"){ $("scriptOutput").textContent="Choose an idea from the Ideas tab first."; return; }
+  $("generateScript").disabled=true;$("generateScript").textContent="Generating…";
+  setTimeout(function(){
+    var hook="Most people see this as another tech trend. But the real change is happening quietly—and it could reshape how ordinary people work, create, and make decisions.";
+    var outline=["Cold open: challenge the viewer's assumption","Explain the shift in simple terms","Show 3 real-world implications","Explore risks and limitations","End with what viewers should watch next"];
+    $("scriptOutput").classList.remove("empty");
+    $("scriptOutput").innerHTML=
+      '<div class="script-block"><h3>Hook</h3><p>'+hook+'</p></div>'+
+      '<div class="script-block"><h3>Outline</h3><ol>'+outline.map(function(x){return "<li>"+x+"</li>"}).join("")+'</ol></div>'+
+      '<div class="script-block"><h3>Narration Draft</h3><p>'+hook+' In this video, we break down '+selectedTitle+' without the hype. We will look at what is changing, why it matters, where the biggest opportunities may appear, and which claims still deserve skepticism. The goal is to leave the viewer with a clear picture of the trend and the signals worth following next.</p></div>'+
+      '<div class="script-block"><h3>Shorts Angles</h3><ol><li>The surprising change in 30 seconds</li><li>The biggest misconception</li><li>What happens next?</li></ol></div>'+
+      '<button id="sendProduction" class="primary">Send to Production</button>';
+    $("sendProduction").onclick=function(){showPage("dashboard");location.hash="dashboard";statusText.textContent="Script ready: "+selectedTitle;createBtn.textContent="Start Production"};
+    $("generateScript").disabled=false;$("generateScript").textContent="Regenerate Draft";
+  },650);
+}
+$("generateScript").onclick=buildScriptDraft;
+if(location.hash&&document.getElementById(location.hash.slice(1)))showPage(location.hash.slice(1));
