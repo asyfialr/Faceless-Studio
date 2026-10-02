@@ -196,27 +196,25 @@ app.post("/api/render/captions",async(req,res)=>{
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
   const projectDir=join(storageRoot,projectId),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
   const xml=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const makePng=async(text,w,h,font,y,file)=>{
-    const svg=`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><style>.t{font-family:Arial,sans-serif;font-size:${font}px;font-weight:700;fill:white;stroke:black;stroke-width:8px;paint-order:stroke;stroke-linejoin:round}</style><text class="t" x="50%" y="${y}" text-anchor="middle">${xml(text)}</text></svg>`;
-    await sharp(Buffer.from(svg)).png().toFile(file);
-  };
-  const run=async(input,out,chunks,duration,w,h,font,y,label)=>{
-    const overlays=[];for(let k=0;k<chunks.length;k++){const f=join(projectDir,`cap-${label.replace(/\s/g,"-")}-${k}.png`);await makePng(chunks[k],w,h,font,y,f);overlays.push(f)}
-    const args=["-y","-i",input];overlays.forEach(f=>args.push("-i",f));
-    const step=duration/Math.max(1,chunks.length);let prev="[0:v]",parts=[];
-    overlays.forEach((f,k)=>{const outTag=k===overlays.length-1?"[vout]":"[v"+k+"]";parts.push(prev+"["+(k+1)+":v]overlay=0:0:enable='between(t,"+(k*step).toFixed(3)+","+((k+1)*step).toFixed(3)+")'"+outTag);prev=outTag});
-    args.push("-filter_complex",parts.join(";"),"-map","[vout]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",out);
-    await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-3500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-1100))))});
-    await Promise.all(overlays.map(f=>rm(f,{force:true}).catch(()=>{})));
+  const render=async(input,out,chunks,duration,w,h,font,y,label)=>{
+    const frameH=Math.max(90,font*2),sheetH=frameH*chunks.length;
+    const texts=chunks.map((t,i)=>`<text class="t" x="50%" y="${i*frameH+font+12}" text-anchor="middle">${xml(t)}</text>`).join("");
+    const svg=`<svg width="${w}" height="${sheetH}" xmlns="http://www.w3.org/2000/svg"><style>.t{font-family:Arial,sans-serif;font-size:${font}px;font-weight:700;fill:white;stroke:black;stroke-width:7px;paint-order:stroke;stroke-linejoin:round}</style>${texts}</svg>`;
+    const sheet=join(projectDir,`caption-sheet-${label}.png`);await sharp(Buffer.from(svg)).png().toFile(sheet);
+    const step=duration/Math.max(1,chunks.length);
+    const ySheet=`floor(t/${step.toFixed(6)})*${frameH}`;
+    const fc=`[1:v]crop=${w}:${frameH}:0:${ySheet}[cap];[0:v][cap]overlay=0:${Math.max(0,y)}:shortest=1[vout]`;
+    await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",input,"-loop","1","-i",sheet,"-filter_complex",fc,"-map","[vout]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-shortest","-movflags","+faststart",out]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-3500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-1200))))});
+    await rm(sheet,{force:true}).catch(()=>{});
   };
   try{
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
     const longDuration=Math.max(20,Number(req.body?.longDuration)||120);
-    await run(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,720,34,650,"long");
+    await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,720,34,610,"long");
     const outputs=[];
-    for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await run(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,1280,44,1040,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
-    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="sharp-overlay";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"sharp-overlay"});
+    for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,1280,44,930,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="sharp-sprite-overlay";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"sharp-sprite-overlay"});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
