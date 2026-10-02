@@ -209,12 +209,25 @@ app.post("/api/render/captions",async(req,res)=>{
   const ff=(args,label)=>new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))))});
   const render=async(input,out,chunks,duration,w,font,y,label)=>{
     const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),bounds=[0];weights.forEach(x=>bounds.push(bounds[bounds.length-1]+duration*x/totalWeight));const parts=[];
+    const maxTextWidth=Math.round(w*(label==="long"?.82:.78));
+    const wrap=(ctx,text,maxWidth)=>{
+      const ws=text.split(/\s+/),lines=[];let line="";
+      for(const word of ws){const test=line?line+" "+word:word;if(ctx.measureText(test).width<=maxWidth||!line)line=test;else{lines.push(line);line=word}}
+      if(line)lines.push(line);return lines;
+    };
     for(let i=0;i<chunks.length;i++){
-      const h=Math.max(96,font*2+24),canvas=createCanvas(w,h),ctx=canvas.getContext("2d");
-      ctx.clearRect(0,0,w,h);ctx.font="700 "+font+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=8;ctx.strokeStyle="black";ctx.fillStyle="white";ctx.strokeText(chunks[i],w/2,h/2);ctx.fillText(chunks[i],w/2,h/2);
+      let fs=font,canvas,ctx,lines;
+      do{
+        const probe=createCanvas(w,180);ctx=probe.getContext("2d");ctx.font="700 "+fs+"px CaptionInter";lines=wrap(ctx,chunks[i],maxTextWidth);
+        if(lines.length<=2&&lines.every(x=>ctx.measureText(x).width<=maxTextWidth)){canvas=probe;break}fs-=2;
+      }while(fs>=22);
+      if(!canvas)canvas=createCanvas(w,180);
+      const lineH=Math.round(fs*1.22),h=Math.max(110,lineH*lines.length+30);canvas=createCanvas(w,h);ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,w,h);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";
+      const top=h/2-(lines.length-1)*lineH/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lineH;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
       const img=join(projectDir,`cap-${label}-${i}.png`),part=join(projectDir,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
       const start=bounds[i].toFixed(3),len=Math.max(.25,bounds[i+1]-bounds[i]).toFixed(3);
-      await ff(["-y","-ss",start,"-t",len,"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=0:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" part "+(i+1));
+      await ff(["-y","-ss",start,"-t",len,"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" part "+(i+1));
       await rm(img,{force:true}).catch(()=>{});parts.push(part);
     }
     const list=join(projectDir,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
@@ -222,14 +235,14 @@ app.post("/api/render/captions",async(req,res)=>{
     await rm(list,{force:true}).catch(()=>{});await Promise.all(parts.map(p=>rm(p,{force:true}).catch(()=>{})));
   };
   try{
-    const longChunks=[];for(let i=0;i<words.length;i+=10)longChunks.push(words.slice(i,i+10).join(" "));
+    const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
     let longDuration=Number(req.body?.longDuration)||0;
     if(!longDuration){
       longDuration=await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",join(projectDir,"long.mp4"),"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):resolve(67)});cp.on("error",reject)});
     }
-    await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,30,590,"long");
+    await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long");
     const outputs=[];
-    for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=5)chunks.push(sw.slice(k,k+5).join(" "));const use=chunks.length?chunks:[words.slice(0,5).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,40,930,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
+    for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
     const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
     res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay"});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
