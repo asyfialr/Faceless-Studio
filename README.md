@@ -3,6 +3,8 @@
 Private AI-assisted content production dashboard for long-form YouTube videos and Shorts.
 
 ## V0.1 Prototype
+
+Deployment: GitHub Pages workflow enabled.
 - Mobile-first dashboard
 - Autopilot toggle
 - Create Video flow
