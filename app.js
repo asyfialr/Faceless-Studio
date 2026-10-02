@@ -172,3 +172,16 @@ $("buildSchedule").onclick=function(){
   $("scheduleStatus").textContent="4 publishing slots prepared.";
   sessionStorage.setItem("scheduleReady","1");
 };
+
+const ytChecks=[["GitHub Pages dashboard","Ready"],["Secure backend","Required"],["Google OAuth client","Required"],["YouTube channel authorization","Pending"],["Upload & scheduling API","Pending"]];
+function renderYouTubeSetup(){
+  $("ytChecklist").innerHTML=ytChecks.map(function(x){return '<div class="check-row"><strong>'+x[0]+'</strong><span>'+x[1]+'</span></div>'}).join("");
+}
+$("connectYouTube").onclick=function(){
+  $("ytMessage").textContent="Dashboard is ready. A secure backend must be connected before Google sign-in can start.";
+  $("ytState").textContent="Backend required";
+  $("connectYouTube").textContent="Waiting for Backend";
+  $("connectYouTube").disabled=true;
+  setTimeout(function(){$("connectYouTube").disabled=false;$("connectYouTube").textContent="Check Connection"},1200);
+};
+renderYouTubeSetup();
