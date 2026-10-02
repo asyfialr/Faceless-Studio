@@ -196,6 +196,7 @@ $("connectYouTube").onclick=function(){
 renderYouTubeSetup();
 
 var activePreview=0;
+var shortRenderUrls=["","",""];
 var longRenderUrl="";
 const previewItems=[["Long Video","16:9","landscape"],["Short #001","9:16","portrait"],["Short #002","9:16","portrait"],["Short #003","9:16","portrait"]];
 function selectPreview(i){
@@ -205,7 +206,10 @@ function selectPreview(i){
   $("videoStage").className="video-stage "+x[2];
   document.querySelectorAll(".preview-choice").forEach(function(b){b.classList.toggle("active",Number(b.dataset.preview)===i)});
   var pv=$("previewVideo"),ph=$("previewPlaceholder");
-  if(i===0&&longRenderUrl){
+  if(i>0&&shortRenderUrls[i-1]){
+    pv.src=shortRenderUrls[i-1];pv.load();pv.style.display="block";if(ph)ph.style.display="none";
+    $("previewMessage").textContent=reviewStates[i]==="approved"?"Approved ✓":"Rendered Short #00"+i+" ready for review.";
+  }else if(i===0&&longRenderUrl){
     if(pv.src!==longRenderUrl){pv.src=longRenderUrl;pv.load()}
     pv.style.display="block";if(ph)ph.style.display="none";
     $("previewMessage").textContent=reviewStates[i]==="approved"?"Approved ✓":"Rendered Long MP4 ready for review.";
@@ -231,7 +235,7 @@ const API_BASE="https://faceless-studio-production-c487.up.railway.app";
 async function restorePersistentProject(){
   var id=localStorage.getItem("activeProjectId");if(!id)return;
   try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return;
-    var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
+    var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;if(Array.isArray(p.shorts))shortRenderUrls=p.shorts.map(function(x){return API_BASE+x});sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
     var rv=document.getElementById("renderedVideo");if(rv){rv.src=longRenderUrl;rv.style.display="block"}
     var pv=document.getElementById("previewVideo"),ph=document.getElementById("previewPlaceholder");
     if(pv){pv.src=longRenderUrl;pv.load()}if(ph)ph.style.display="none";
@@ -379,6 +383,17 @@ function buildSceneMotion(){
   status.textContent="Motion plan ready ✓ "+plan.length+" scenes • "+ready+" visuals available";
   btn.textContent="↻ Rebuild Scene Motion";$("productionStatus").textContent="Scene motion plan ready ✓";
 }
+async function generateShorts(){
+  var btn=document.getElementById("generateShorts"),status=document.getElementById("shortsStatus"),id=localStorage.getItem("activeProjectId");
+  if(!id){status.textContent="Render the Long MP4 first.";return}
+  btn.disabled=true;btn.textContent="Generating Shorts…";status.textContent="Rendering Short 1/3, 2/3, 3/3 on Railway…";
+  try{var r=await fetch(API_BASE+"/api/render/shorts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id})});
+    var d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Shorts failed");
+    shortRenderUrls=d.shorts.map(function(x){return API_BASE+x});status.textContent="3 Shorts ready ✓";btn.textContent="↻ Regenerate 3 Shorts";
+    sessionStorage.setItem("shortsReady","1");$("productionStatus").textContent="Long + 3 Shorts ready for Review ✓";
+  }catch(e){status.textContent="Shorts failed: "+e.message;btn.textContent="Try Generate Shorts Again"}finally{btn.disabled=false}
+}
+var shortsButton=document.getElementById("generateShorts");if(shortsButton)shortsButton.onclick=function(e){e.preventDefault();generateShorts()};
 async function renderMp4(){
   var btn=document.getElementById("renderMp4"),status=document.getElementById("renderStatus"),player=document.getElementById("renderedVideo"),voice=document.getElementById("voicePlayer");
   var cards=Array.from(document.querySelectorAll(".plan-scene")),motion=[];try{motion=JSON.parse(sessionStorage.getItem("motionPlan")||"[]")}catch(e){}
