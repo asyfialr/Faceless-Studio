@@ -193,7 +193,8 @@ app.post("/api/render/mp4",async(req,res)=>{
     const projectId=String(req.body?.projectId||crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g,"");
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
     await writeFile(join(projectDir,"long.mp4"),video);
-    const meta={id:projectId,title:String(req.body?.title||"Untitled project"),updatedAt:new Date().toISOString(),longVideoUrl:"/media/"+projectId+"/long.mp4"};
+    await writeFile(join(projectDir,"voice.wav"),Buffer.from(audio64,"base64"));
+    const meta={id:projectId,title:String(req.body?.title||"Untitled project"),updatedAt:new Date().toISOString(),longVideoUrl:"/media/"+projectId+"/long.mp4",voiceStored:true};
     await writeFile(join(projectDir,"project.json"),JSON.stringify(meta,null,2));
     res.setHeader("X-Project-Id",projectId);res.setHeader("X-Video-Url",meta.longVideoUrl);
     res.setHeader("Content-Type","video/mp4");res.setHeader("Content-Length",video.length);res.send(video);
@@ -237,14 +238,16 @@ app.post("/api/render/captions",async(req,res)=>{
   try{
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
     let longDuration=Number(req.body?.longDuration)||0;
+    const voicePath=join(projectDir,"voice.wav");
+    let voiceAvailable=false;try{await readFile(voicePath);voiceAvailable=true}catch{}
     if(!longDuration){
       longDuration=await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",join(projectDir,"long.mp4"),"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):resolve(67)});cp.on("error",reject)});
     }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long");
     const outputs=[];
     for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
-    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay"});
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=voiceAvailable?"voice-duration-weighted":"video-duration-weighted";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:voiceAvailable?"voice-duration-weighted":"video-duration-weighted"});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
