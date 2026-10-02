@@ -200,8 +200,8 @@ app.post("/api/render/shorts",async(req,res)=>{
     for(let i=0;i<3;i++){
       const out=join(projectDir,`short-${i+1}.mp4`),start=i*20;
       await new Promise((resolve,reject)=>{
-        const args=["-y","-ss",String(start),"-i",input,"-t","20","-vf","scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p","-c:v","libx264","-preset","veryfast","-c:a","aac","-b:a","128k","-movflags","+faststart",out];
-        const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",code=>code===0?resolve():reject(new Error("Short "+(i+1)+" FFmpeg "+code+" "+err.slice(-700))));
+        const args=["-y","-ss",String(start),"-i",input,"-t","20","-vf","scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p","-c:v","libx264","-preset","ultrafast","-threads","1","-r","30","-c:a","aac","-b:a","96k","-movflags","+faststart",out];
+        const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Short "+(i+1)+" FFmpeg code="+code+" signal="+(signal||"none")+" "+err.slice(-700))));
       });
       outputs.push("/media/"+projectId+"/short-"+(i+1)+".mp4");
     }
