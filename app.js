@@ -1,5 +1,13 @@
 const stages=["Researching topic","Writing script","Generating voice","Preparing visuals","Rendering long video","Extracting Shorts","Adding captions","Ready for review"];
-const ideas=[["Why AI Agents Are Becoming the Next Big Tech Shift","AI","High potential"],["7 Technologies That Could Change Everyday Life by 2030","Future Tech","Evergreen"],["The Hidden AI Tools People Are Using to Save Hours Every Week","Productivity","Strong hook"],["What Happens When AI Can Work Without Constant Human Prompts?","AI","Explainer"]];
+let ideas=[["Why AI Agents Are Becoming the Next Big Tech Shift","AI","High potential"],["7 Technologies That Could Change Everyday Life by 2030","Future Tech","Evergreen"],["The Hidden AI Tools People Are Using to Save Hours Every Week","Productivity","Strong hook"],["What Happens When AI Can Work Without Constant Human Prompts?","AI","Explainer"]];
+const ideaTemplates=[
+["The {niche} Shift Most People Haven't Noticed Yet","Trend","Strong hook"],
+["7 {niche} Changes That Could Matter in the Next Few Years","Explainer","Evergreen"],
+["What Nobody Tells You About the Future of {niche}","Story","Curiosity"],
+["How {niche} Is Quietly Changing Everyday Life","Documentary","Broad appeal"],
+["The Biggest {niche} Mistakes People May Be Making Right Now","List","High CTR"],
+["What Happens Next With {niche}?","Future","Discussion"]
+];
 let selectedTitle="Untitled AI Video", projectMade=false;
 const $=id=>document.getElementById(id), pipeline=$("pipeline"), progressBar=$("progressBar"), progressLabel=$("progressLabel"), statusText=$("statusText"), createBtn=$("createBtn");
 function drawStages(active=-1){pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("")}
@@ -20,3 +28,20 @@ createBtn.onclick=async()=>{createBtn.disabled=true;$("queueCount").textContent=
 $("autopilot").onchange=e=>{localStorage.autopilot=e.target.checked?"1":"0";statusText.textContent=e.target.checked?"Autopilot enabled. Future runs can be scheduled automatically.":"Autopilot off. Manual approval mode active."};
 $("autopilot").checked=localStorage.autopilot==="1";$("saveSettings").onclick=()=>{["niche","audience","duration","shortsSetting","voice"].forEach(k=>localStorage[k]=$(k).value);$("savedText").textContent="Saved on this device ✓";setTimeout(()=>$("savedText").textContent="",1800)};["niche","audience","duration","shortsSetting","voice"].forEach(k=>{if(localStorage[k])$(k).value=localStorage[k]});
 drawStages();renderIdeas();
+function generatePrototypeIdeas(){
+  var niche=$("ideaNiche").value.trim()||"AI & Technology";
+  var audience=$("ideaAudience").value;
+  $("ideaStatus").textContent="Generating concepts…";
+  $("generateIdeas").disabled=true;
+  setTimeout(function(){
+    ideas=ideaTemplates.slice().sort(function(){return Math.random()-.5}).slice(0,4).map(function(x){
+      return [x[0].replaceAll("{niche}",niche),x[1]+" • "+audience,x[2]];
+    });
+    renderIdeas();
+    $("ideaStatus").textContent="4 ideas generated • prototype engine";
+    $("generateIdeas").disabled=false;
+  },650);
+}
+$("generateIdeas").onclick=generatePrototypeIdeas;
+if(localStorage.niche)$("ideaNiche").value=localStorage.niche;
+if(localStorage.audience)$("ideaAudience").value=localStorage.audience;
