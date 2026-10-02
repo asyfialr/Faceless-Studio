@@ -190,6 +190,31 @@ app.post("/api/render/mp4",async(req,res)=>{
   finally{await rm(dir,{recursive:true,force:true}).catch(()=>{})}
 });
 
+app.post("/api/render/captions",async(req,res)=>{
+  const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");
+  const narration=String(req.body?.narration||"").trim();
+  if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
+  const projectDir=join(storageRoot,projectId);
+  try{
+    const words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
+    const chunks=[];for(let i=0;i<words.length;i+=7)chunks.push(words.slice(i,i+7).join(" "));
+    const escapeSrt=t=>t.replace(/-->/g,"→").replace(/[<>]/g,"");
+    const stamp=n=>{const ms=Math.max(0,Math.round(n*1000)),hh=String(Math.floor(ms/3600000)).padStart(2,"0"),mm=String(Math.floor(ms%3600000/60000)).padStart(2,"0"),ss=String(Math.floor(ms%60000/1000)).padStart(2,"0"),mmm=String(ms%1000).padStart(3,"0");return hh+":"+mm+":"+ss+","+mmm};
+    const total=60,step=total/Math.max(1,chunks.length);
+    const srt=chunks.map((x,i)=>(i+1)+"\n"+stamp(i*step)+" --> "+stamp((i+1)*step)+"\n"+escapeSrt(x)+"\n").join("\n");
+    await writeFile(join(projectDir,"captions.srt"),srt);
+    const outputs=[];
+    for(let i=0;i<3;i++){
+      const input=join(projectDir,`short-${i+1}.mp4`),out=join(projectDir,`short-${i+1}-captioned.mp4`);
+      const vf="subtitles="+join(projectDir,"captions.srt").replace(/\\/g,"/").replace(/:/g,"\\:")+":force_style='FontSize=18,Alignment=2,MarginV=90,Outline=2'";
+      await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",input,"-vf",vf,"-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",out]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Caption "+(i+1)+" code="+code+" signal="+(signal||"none")+" "+err.slice(-800))))});
+      outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4");
+    }
+    const metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.shorts=outputs;meta.captions=true;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,shorts:outputs});
+  }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
+});
+
 app.post("/api/render/shorts",async(req,res)=>{
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");
   if(!projectId)return res.status(400).json({error:"project_id_required"});
