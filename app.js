@@ -1,4 +1,5 @@
 const stages=["Researching topic","Writing script","Generating voice","Preparing visuals","Rendering long video","Extracting Shorts","Adding captions","Ready for review"];
+const productionStages=[["Voice","Generate US English narration"],["Visuals","Prepare scenes and B-roll"],["Captions","Create timed subtitles"],["Long Render","Assemble 16:9 master video"],["Shorts","Create 3 vertical clips"],["Review","Prepare outputs for approval"]];
 let ideas=[["Why AI Agents Are Becoming the Next Big Tech Shift","AI","High potential"],["7 Technologies That Could Change Everyday Life by 2030","Future Tech","Evergreen"],["The Hidden AI Tools People Are Using to Save Hours Every Week","Productivity","Strong hook"],["What Happens When AI Can Work Without Constant Human Prompts?","AI","Explainer"]];
 const ideaTemplates=[
 ["The {niche} Shift Most People Haven't Noticed Yet","Trend","Strong hook"],
@@ -70,9 +71,46 @@ function buildScriptDraft(){
       '<div class="script-block"><h3>Narration Draft</h3><p>'+hook+' In this video, we break down '+selectedTitle+' without the hype. We will look at what is changing, why it matters, where the biggest opportunities may appear, and which claims still deserve skepticism. The goal is to leave the viewer with a clear picture of the trend and the signals worth following next.</p></div>'+
       '<div class="script-block"><h3>Shorts Angles</h3><ol><li>The surprising change in 30 seconds</li><li>The biggest misconception</li><li>What happens next?</li></ol></div>'+
       '<button id="sendProduction" class="primary">Send to Production</button>';
-    $("sendProduction").onclick=function(){location.hash="dashboard";statusText.textContent="Script ready: "+selectedTitle;createBtn.textContent="Start Production"};
+    $("sendProduction").onclick=function(){
+  sessionStorage.setItem("selectedTitle",selectedTitle);
+  sessionStorage.setItem("scriptReady","1");
+  $("productionTitle").textContent=selectedTitle;
+  $("productionStatus").textContent="Script approved. Production is ready to start.";
+  location.hash="productionStudio";
+};
     $("generateScript").disabled=false;$("generateScript").textContent="Regenerate Draft";
   },650);
 }
 $("generateScript").onclick=buildScriptDraft;
 syncHash();
+
+function drawProduction(active=-1,done=-1){
+  $("productionSteps").innerHTML=productionStages.map(function(s,i){
+    var cls=i<=done?"done":(i===active?"running":"");
+    var state=i<=done?"Done":(i===active?"Working…":"Waiting");
+    return '<div class="production-step '+cls+'"><span class="num">'+(i+1)+'</span><div><strong>'+s[0]+'</strong><small>'+s[1]+'</small></div><span class="state">'+state+'</span></div>';
+  }).join("");
+}
+async function runProduction(){
+  if(sessionStorage.getItem("scriptReady")!=="1"){
+    $("productionStatus").textContent="Generate a script and send it to production first.";
+    return;
+  }
+  $("startProduction").disabled=true;$("productionResult").innerHTML="";
+  for(var i=0;i<productionStages.length;i++){
+    $("productionStatus").textContent=productionStages[i][1]+"…";
+    drawProduction(i,i-1);
+    await new Promise(function(r){setTimeout(r,520)});
+  }
+  drawProduction(-1,productionStages.length-1);
+  $("productionStatus").textContent="Production complete. Outputs are ready for review.";
+  $("productionResult").innerHTML='<div class="result-card"><h3>Long Video</h3><p>16:9 • 8–10 min • Ready for review</p></div><div class="result-card"><h3>3 Shorts</h3><p>9:16 • Derived highlights • Ready for review</p><div class="result-actions"><button id="saveProject" class="primary">Save to Projects</button></div></div>';
+  $("saveProject").onclick=function(){addProjects();sessionStorage.setItem("projectMade","1");location.hash="projectsPage"};
+  $("startProduction").disabled=false;$("startProduction").textContent="Run Again";
+}
+$("startProduction").onclick=runProduction;
+drawProduction();
+if(sessionStorage.getItem("scriptReady")==="1"){
+  $("productionTitle").textContent=selectedTitle;
+  $("productionStatus").textContent="Script approved. Production is ready to start.";
+}
