@@ -225,31 +225,16 @@ app.post("/api/render/captions",async(req,res)=>{
     }catch(e){console.error("Speech alignment fallback:",e.message);return []}finally{await rm(raw,{force:true}).catch(()=>{})}
   };
   const render=async(input,out,chunks,duration,w,font,y,label,speechBounds)=>{
-    const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),fallback=[0];weights.forEach(x=>fallback.push(fallback[fallback.length-1]+duration*x/totalWeight));const bounds=Array.isArray(speechBounds)&&speechBounds.length===chunks.length+1?speechBounds:fallback;const parts=[];
-    const maxTextWidth=Math.round(w*(label==="long"?.82:.78));
-    const wrap=(ctx,text,maxWidth)=>{
-      const ws=text.split(/\s+/),lines=[];let line="";
-      for(const word of ws){const test=line?line+" "+word:word;if(ctx.measureText(test).width<=maxWidth||!line)line=test;else{lines.push(line);line=word}}
-      if(line)lines.push(line);return lines;
-    };
-    for(let i=0;i<chunks.length;i++){
-      let fs=font,canvas,ctx,lines;
-      do{
-        const probe=createCanvas(w,180);ctx=probe.getContext("2d");ctx.font="700 "+fs+"px CaptionInter";lines=wrap(ctx,chunks[i],maxTextWidth);
-        if(lines.length<=2&&lines.every(x=>ctx.measureText(x).width<=maxTextWidth)){canvas=probe;break}fs-=2;
-      }while(fs>=22);
-      if(!canvas)canvas=createCanvas(w,180);
-      const lineH=Math.round(fs*1.22),h=Math.max(110,lineH*lines.length+30);canvas=createCanvas(w,h);ctx=canvas.getContext("2d");
-      ctx.clearRect(0,0,w,h);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";
-      const top=h/2-(lines.length-1)*lineH/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lineH;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
-      const img=join(projectDir,`cap-${label}-${i}.png`),part=join(projectDir,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
-      const start=bounds[i].toFixed(3),len=Math.max(.25,bounds[i+1]-bounds[i]).toFixed(3);
-      await ff(["-y","-ss",start,"-t",len,"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" part "+(i+1));
-      await rm(img,{force:true}).catch(()=>{});parts.push(part);
-    }
-    const list=join(projectDir,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
-    await ff(["-y","-f","concat","-safe","0","-i",list,"-c","copy","-movflags","+faststart",out],label+" concat");
-    await rm(list,{force:true}).catch(()=>{});await Promise.all(parts.map(p=>rm(p,{force:true}).catch(()=>{})));
+    const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),fallback=[0];weights.forEach(x=>fallback.push(fallback[fallback.length-1]+duration*x/totalWeight));const bounds=Array.isArray(speechBounds)&&speechBounds.length===chunks.length+1?speechBounds:fallback;
+    const maxTextWidth=Math.round(w*(label==="long"?.82:.78)),rowH=label==="long"?118:142,spriteW=w,spriteH=rowH*chunks.length;
+    const canvas=createCanvas(spriteW,spriteH),ctx=canvas.getContext("2d");ctx.clearRect(0,0,spriteW,spriteH);ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.strokeStyle="black";ctx.fillStyle="white";
+    const wrap=(text,fs)=>{ctx.font="700 "+fs+"px CaptionInter";const ws=text.split(/\s+/),lines=[];let line="";for(const word of ws){const t=line?line+" "+word:word;if(ctx.measureText(t).width<=maxTextWidth||!line)line=t;else{lines.push(line);line=word}}if(line)lines.push(line);return lines};
+    for(let i=0;i<chunks.length;i++){let fs=font,lines=wrap(chunks[i],fs);while((lines.length>2||lines.some(x=>ctx.measureText(x).width>maxTextWidth))&&fs>22){fs-=2;lines=wrap(chunks[i],fs)}ctx.font="700 "+fs+"px CaptionInter";ctx.lineWidth=Math.max(5,Math.round(fs*.16));const lh=Math.round(fs*1.18),cy=i*rowH+rowH/2,top=cy-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)})}
+    const sprite=join(projectDir,`cap-sprite-${label}.png`);await writeFile(sprite,canvas.toBuffer("image/png"));
+    const expr=bounds.slice(0,-1).map((st,i)=>`if(between(t\\,${st.toFixed(3)}\\,${bounds[i+1].toFixed(3)})\\,${i*rowH}\\,`).join("")+"0"+")".repeat(chunks.length);
+    const filter=`[1:v]crop=${w}:${rowH}:0:'${expr}'[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
+    await ff(["-y","-i",input,"-loop","1","-i",sprite,"-filter_complex",filter,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","30","-threads","1","-c:a","copy","-shortest","-movflags","+faststart",out],label+" caption render");
+    await rm(sprite,{force:true}).catch(()=>{});
   };
   try{
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
