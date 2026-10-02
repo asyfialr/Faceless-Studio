@@ -202,6 +202,26 @@ app.post("/api/render/mp4",async(req,res)=>{
   finally{await rm(dir,{recursive:true,force:true}).catch(()=>{})}
 });
 
+
+const geminiWordTimestamps=async(audioPath,projectDir)=>{
+  const cache=join(projectDir,"word-timestamps.json");
+  try{const saved=JSON.parse(await readFile(cache,"utf8"));if(Array.isArray(saved)&&saved.length)return saved}catch{}
+  const key=process.env.GEMINI_API_KEY;if(!key)return [];
+  try{
+    const audio=await readFile(audioPath);
+    const start=await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key="+encodeURIComponent(key),{method:"POST",headers:{"X-Goog-Upload-Protocol":"resumable","X-Goog-Upload-Command":"start","X-Goog-Upload-Header-Content-Length":String(audio.length),"X-Goog-Upload-Header-Content-Type":"audio/wav","Content-Type":"application/json"},body:JSON.stringify({file:{display_name:"faceless-voice.wav"}})});
+    if(!start.ok)throw new Error("Gemini upload start "+start.status+" "+(await start.text()).slice(0,300));
+    const uploadUrl=start.headers.get("x-goog-upload-url");if(!uploadUrl)throw new Error("Gemini upload URL missing");
+    const uploaded=await fetch(uploadUrl,{method:"POST",headers:{"X-Goog-Upload-Command":"upload, finalize","X-Goog-Upload-Offset":"0","Content-Length":String(audio.length),"Content-Type":"audio/wav"},body:audio});
+    const fileData=await uploaded.json();if(!uploaded.ok)throw new Error("Gemini upload "+uploaded.status+" "+JSON.stringify(fileData).slice(0,300));
+    const uri=fileData?.file?.uri,mime=fileData?.file?.mimeType||"audio/wav";if(!uri)throw new Error("Gemini file URI missing");
+    const tr=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"x-goog-api-key":key,"Content-Type":"application/json"},body:JSON.stringify({model:"gemini-3.5-transcribe",input:[{type:"audio",uri,mime_type:mime}],generation_config:{transcription_config:{mode:{type:"verbatim",timestamp_granularities:["word"]}}}})});
+    const data=await tr.json();if(!tr.ok)throw new Error("Gemini transcribe "+tr.status+" "+(data?.error?.message||JSON.stringify(data).slice(0,300)));
+    const out=[];for(const step of data?.steps||[])for(const content of step?.content||[])for(const an of content?.annotations||[])if(an?.type==="word_info"){const sec=v=>{if(typeof v==="number")return v;const m=String(v||"").match(/([\d.]+)s?/);return m?Number(m[1]):NaN},st=sec(an.start_offset),en=sec(an.end_offset);if(Number.isFinite(st)&&Number.isFinite(en))out.push({word:String(an.word||an.text||"").trim(),start:st,end:en})}
+    if(out.length)await writeFile(cache,JSON.stringify(out,null,2));return out;
+  }catch(e){console.error("Gemini word timestamps fallback:",e.message);return []}
+};
+
 app.post("/api/render/captions",async(req,res)=>{
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),narration=String(req.body?.narration||"").trim();
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
@@ -241,19 +261,24 @@ app.post("/api/render/captions",async(req,res)=>{
     await rm(list,{force:true}).catch(()=>{});await Promise.all(parts.map(p=>rm(p,{force:true}).catch(()=>{})));
   };
   try{
-    const longChunks=[];for(let i=0;i<words.length;i+=9)longChunks.push(words.slice(i,i+9).join(" "));
+    let longChunks=[];for(let i=0;i<words.length;i+=9)longChunks.push(words.slice(i,i+9).join(" "));
     let longDuration=Number(req.body?.longDuration)||0;
     const voicePath=join(projectDir,"voice.wav");
     let voiceAvailable=false;try{await readFile(voicePath);voiceAvailable=true}catch{}
+    const timedWords=voiceAvailable?await geminiWordTimestamps(voicePath,projectDir):[];
     if(!longDuration){
       longDuration=await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",join(projectDir,"long.mp4"),"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):resolve(67)});cp.on("error",reject)});
     }
-    const longSpeechBounds=[];
+    let longSpeechBounds=[];
+    if(timedWords.length>=3){
+      longChunks=[];longSpeechBounds=[];
+      for(let i=0;i<timedWords.length;i+=9){const group=timedWords.slice(i,i+9);longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,group[group.length-1].end))}
+    }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
     for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
-    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=voiceAvailable?"voice-duration-weighted":"video-duration-weighted";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:voiceAvailable?"voice-duration-weighted":"video-duration-weighted"});
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=timedWords.length?"gemini-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"gemini-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
