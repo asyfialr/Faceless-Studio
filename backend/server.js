@@ -42,9 +42,9 @@ app.post("/api/ai/script",async(req,res)=>{
         const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
         return res.json({ok:true,provider:"gemini",model,script:JSON.parse(raw)});
       }
-      if(!openaiKey)return res.status(502).json({error:"gemini_error",details:data?.error?.message||"Gemini request failed"});
+      return res.status(502).json({error:"gemini_error",provider:"gemini",details:data?.error?.message||"Gemini request failed"});
     }catch(error){
-      if(!openaiKey)return res.status(500).json({error:"gemini_generation_failed",message:error.message});
+      return res.status(500).json({error:"gemini_generation_failed",provider:"gemini",message:error.message});
     }
   }
   try{
