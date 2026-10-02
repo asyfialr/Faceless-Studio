@@ -32,19 +32,27 @@ app.post("/api/ai/script",async(req,res)=>{
   const prompt="Create an original faceless YouTube video script in natural American English. Topic: "+title+"\nAudience: "+audience+"\nTarget duration: "+duration+"\nReturn ONLY valid JSON with keys hook (string), outline (array of 5 strings), narration (string), shortsAngles (array of 3 strings). Avoid unsupported factual claims and avoid copying source text.";
   if(geminiKey){
     try{
-      const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+      const models=[process.env.GEMINI_MODEL||"gemini-3.8-flash","gemini-3.7-flash","gemini-3.6-flash"].filter((v,i,a)=>v&&a.indexOf(v)===i);
+      let model=models[0];
       let r,data;
-      for(let attempt=1;attempt<=3;attempt++){
-        r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
-          method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
-        });
-        data=await r.json();
+      for(const candidate of models){
+        model=candidate;
+        for(let attempt=1;attempt<=2;attempt++){
+          r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
+            method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
+          });
+          data=await r.json();
+          if(r.ok)break;
+          const msg=String(data?.error?.message||"");
+          const temporary=r.status===429||r.status===503||/high demand|temporar|overload|unavailable/i.test(msg);
+          if(!temporary)break;
+          if(attempt<2)await new Promise(resolve=>setTimeout(resolve,1200));
+        }
         if(r.ok)break;
         const msg=String(data?.error?.message||"");
         const temporary=r.status===429||r.status===503||/high demand|temporar|overload|unavailable/i.test(msg);
-        if(!temporary||attempt===3)break;
-        await new Promise(resolve=>setTimeout(resolve,attempt*1500));
+        if(!temporary)break;
       }
       if(r.ok){
         const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
