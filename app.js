@@ -402,6 +402,15 @@ async function burnShortCaptions(){
   }catch(e){status.textContent="Captions failed: "+e.message;btn.textContent="Try Captions Again"}finally{btn.disabled=false}
 }
 var captionButton=document.getElementById("burnCaptions");if(captionButton)captionButton.onclick=function(e){e.preventDefault();burnShortCaptions()};
+async function generateThumbnail(){
+  var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
+  if(!id||!title){status.textContent="Choose a project/topic first.";return}
+  btn.disabled=true;btn.textContent="Generating…";status.textContent="Generating AI thumbnail…";
+  try{var r=await fetch(API_BASE+"/api/ai/thumbnail",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,title:title})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Thumbnail failed");img.src=API_BASE+d.thumbnailUrl+"?v="+Date.now();img.style.display="block";status.textContent="Thumbnail ready ✓ 1280×720";btn.textContent="↻ Regenerate Thumbnail"}
+  catch(e){status.textContent="Thumbnail failed: "+e.message;btn.textContent="Try Thumbnail Again"}finally{btn.disabled=false}
+}
+var thumbnailButton=document.getElementById("generateThumbnail");if(thumbnailButton)thumbnailButton.onclick=function(e){e.preventDefault();generateThumbnail()};
+
 async function generateShorts(){
   var btn=document.getElementById("generateShorts"),status=document.getElementById("shortsStatus"),id=localStorage.getItem("activeProjectId");
   if(!id){status.textContent="Render the Long MP4 first.";return}
