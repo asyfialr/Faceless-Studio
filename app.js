@@ -402,6 +402,16 @@ async function burnShortCaptions(){
   }catch(e){status.textContent="Captions failed: "+e.message;btn.textContent="Try Captions Again"}finally{btn.disabled=false}
 }
 var captionButton=document.getElementById("burnCaptions");if(captionButton)captionButton.onclick=function(e){e.preventDefault();burnShortCaptions()};
+async function refreshYouTubeStatus(){
+  var state=document.getElementById("ytState"),msg=document.getElementById("ytMessage"),dot=document.getElementById("ytDot"),btn=document.getElementById("connectYouTube");if(!state)return;
+  try{var r=await fetch(API_BASE+"/api/youtube/status",{cache:"no-store"}),d=await r.json();if(d.connected){state.textContent="Connected ✓";msg.textContent="YouTube authorization is stored securely on Railway.";dot.classList.add("online");btn.textContent="Reconnect YouTube";btn.onclick=function(){location.href=API_BASE+"/api/youtube/connect"}}
+    else if(d.configured){state.textContent="Ready to connect";msg.textContent="OAuth credentials detected. Connect your YouTube channel.";dot.classList.remove("online");btn.textContent="Connect YouTube";btn.onclick=function(){location.href=API_BASE+"/api/youtube/connect"}}
+    else{state.textContent="OAuth setup required";msg.textContent="Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Railway first.";dot.classList.remove("online");btn.textContent="Check Connection";btn.onclick=refreshYouTubeStatus}}
+  catch(e){state.textContent="Backend unavailable";msg.textContent=e.message;dot.classList.remove("online")}
+}
+refreshYouTubeStatus();
+window.addEventListener("hashchange",function(){if(location.hash==="#youtubeConnect")refreshYouTubeStatus()});
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
