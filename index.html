@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Faceless Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">PRIVATE CREATOR TOOL</p>
+        <h1>Faceless Studio</h1>
+      </div>
+      <label class="switch-wrap">
+        <span>Autopilot</span>
+        <input id="autopilot" type="checkbox" />
+        <i class="switch"></i>
+      </label>
+    </header>
+
+    <section class="hero card">
+      <div>
+        <p class="muted">Today's production</p>
+        <h2>1 Long + 3 Shorts</h2>
+        <p id="statusText">Ready to create your next faceless video.</p>
+      </div>
+      <button id="createBtn" class="primary">Create Video</button>
+    </section>
+
+    <section class="stats">
+      <article class="card stat"><strong id="longCount">0/1</strong><span>Long video</span></article>
+      <article class="card stat"><strong id="shortCount">0/3</strong><span>Shorts</span></article>
+      <article class="card stat"><strong id="queueCount">0</strong><span>Queue</span></article>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">PIPELINE</p>
+          <h3>Production progress</h3>
+        </div>
+        <span id="progressLabel">0%</span>
+      </div>
+      <div class="progress"><div id="progressBar"></div></div>
+      <div id="pipeline" class="pipeline"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">PROJECTS</p>
+          <h3>Latest output</h3>
+        </div>
+      </div>
+      <div id="projects" class="projects empty">No videos yet. Tap “Create Video”.</div>
+    </section>
+
+    <nav class="bottom-nav">
+      <button class="active">Dashboard</button>
+      <button>Ideas</button>
+      <button>Projects</button>
+      <button>Settings</button>
+    </nav>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
