@@ -11,7 +11,7 @@ app.use(express.json({limit:"1mb"}));
 app.get("/api/health",(req,res)=>res.json({
   status:"ok",
   service:"Faceless Studio Backend",
-  version:"1.3.1"
+  version:"1.3.2"
 }));
 
 app.get("/api/capabilities",(req,res)=>res.json({
@@ -82,14 +82,14 @@ app.post("/api/ai/voice",async(req,res)=>{
       body:JSON.stringify({
         model,
         input:[{type:"user_input",content:[{type:"text",text:text.slice(0,4000),annotations:[{type:"speech_metadata",style:"Natural confident American English YouTube documentary narration. Clear, warm, engaging, medium pace."}]}]}],
-        response_format:{type:"audio",mime_type:"audio/wav",sample_rate:24000},
+        response_format:{type:"audio"},
         generation_config:{speech_config:[{voice:"Kore"}]}
       })
     });
     const data=await r.json();
     if(!r.ok)return res.status(502).json({error:"gemini_tts_error",details:data?.error?.message||"Gemini TTS request failed"});
-    const audio=data?.output_audio?.data||data?.output?.find?.(x=>x.type==="audio")?.data;
-    if(!audio)return res.status(502).json({error:"audio_missing",details:"Gemini returned no audio data."});
+    const audio=data?.steps?.flatMap(step=>step?.content||[]).filter(item=>item?.type==="audio"&&item?.data).at(-1)?.data;
+    if(!audio)return res.status(502).json({error:"audio_missing",details:"Gemini TTS completed but no audio block was found in the response."});
     res.json({ok:true,provider:"gemini",model,mimeType:"audio/wav",audio});
   }catch(error){res.status(500).json({error:"tts_generation_failed",message:error.message})}
 });
