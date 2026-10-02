@@ -222,6 +222,21 @@ const geminiWordTimestamps=async(audioPath,projectDir)=>{
   }catch(e){console.error("Gemini word timestamps fallback:",e.message);return []}
 };
 
+app.post("/api/captions/analyze",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");
+    if(!projectId)return res.status(400).json({error:"projectId required"});
+    const projectDir=join(storageRoot,projectId),voicePath=join(projectDir,"voice.wav");
+    try{await readFile(voicePath)}catch{return res.status(404).json({error:"voice.wav not found. Render Long first."})}
+    const words=await geminiWordTimestamps(voicePath,projectDir);
+    if(!words.length)return res.status(502).json({error:"Precision transcription unavailable. Stable captions are unchanged."});
+    const valid=words.filter(x=>x.word&&Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start).sort((a,b)=>a.start-b.start);
+    if(valid.length<3)return res.status(502).json({error:"Timestamp result was not valid enough to use."});
+    await writeFile(join(projectDir,"word-timestamps.json"),JSON.stringify(valid,null,2));
+    res.json({status:"ok",projectId,wordCount:valid.length,start:valid[0].start,end:valid[valid.length-1].end,timing:"word-level",cached:true});
+  }catch(e){console.error("Caption timing analyze failed",e);res.status(500).json({error:e.message||"Caption timing analysis failed"})}
+});
+
 app.post("/api/render/captions",async(req,res)=>{
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),narration=String(req.body?.narration||"").trim();
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
