@@ -286,3 +286,20 @@ async function generateServerVoice(){
   finally{btn.disabled=false}
 }
 document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVoice")generateServerVoice()});
+
+async function generateVisualPlan(){
+  var narration=sessionStorage.getItem("aiNarration")||"";
+  var out=$("visualPlanOutput"),btn=$("generateVisualPlan");
+  if(!narration){out.textContent="Generate the AI script first.";return}
+  btn.disabled=true;btn.textContent="Planning visuals…";out.classList.remove("empty");out.textContent="Gemini is breaking the narration into scenes…";
+  try{
+    var r=await fetch(API_BASE+"/api/ai/visual-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle,narration:narration})});
+    var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error);
+    var scenes=(data.plan&&data.plan.scenes)||[];
+    sessionStorage.setItem("visualPlan",JSON.stringify(scenes));
+    out.innerHTML=scenes.map(function(x){return '<div class="plan-scene"><strong>Scene '+x.scene+' • '+x.duration+'</strong><p>'+x.visualPrompt+'</p>'+(x.onScreenText?'<small>Text: '+x.onScreenText+'</small>':'')+'</div>'}).join("");
+    btn.textContent="↻ Regenerate Visual Plan";$("productionStatus").textContent="Visual plan ready ✓ "+scenes.length+" scenes prepared.";
+  }catch(e){out.textContent="Visual planning failed: "+e.message;btn.textContent="Try Visual Plan Again"}
+  finally{btn.disabled=false}
+}
+document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVisualPlan")generateVisualPlan()});
