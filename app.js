@@ -323,4 +323,19 @@ async function prepareSceneMedia(index,button){
   }catch(e){status.textContent="Visual failed: "+e.message;button.textContent="Try Generate Visual Again"}
   finally{button.disabled=false}
 }
+async function generateAllVisuals(){
+  var master=document.getElementById("generateAllVisuals"),progress=document.getElementById("generateAllProgress");
+  var buttons=Array.from(document.querySelectorAll(".generate-scene-media"));
+  if(!buttons.length){progress.textContent="Generate a Visual Plan first.";return}
+  master.disabled=true;master.textContent="Generating All…";
+  var ok=0,failed=0;
+  for(var i=0;i<buttons.length;i++){
+    progress.textContent="Generating "+(i+1)+"/"+buttons.length+" • "+ok+" ready"+(failed?" • "+failed+" failed":"");
+    await prepareSceneMedia(Number(buttons[i].getAttribute("data-scene")),buttons[i]);
+    if((buttons[i].closest(".plan-scene").querySelector(".scene-media-status").textContent||"").includes("ready ✓"))ok++;else failed++;
+  }
+  progress.textContent="Batch complete • "+ok+"/"+buttons.length+" visuals ready"+(failed?" • "+failed+" failed":"")+" ✓";
+  master.textContent=failed?"Retry / Generate All Visuals":"↻ Regenerate All Visuals";master.disabled=false;
+}
+document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateAllVisuals")generateAllVisuals()});
 document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
