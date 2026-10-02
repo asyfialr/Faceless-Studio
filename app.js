@@ -383,6 +383,15 @@ function buildSceneMotion(){
   status.textContent="Motion plan ready ✓ "+plan.length+" scenes • "+ready+" visuals available";
   btn.textContent="↻ Rebuild Scene Motion";$("productionStatus").textContent="Scene motion plan ready ✓";
 }
+async function burnShortCaptions(){
+  var btn=document.getElementById("burnCaptions"),status=document.getElementById("captionStatus"),id=localStorage.getItem("activeProjectId"),narration=sessionStorage.getItem("aiNarration")||"";
+  if(!id||!narration){status.textContent="Generate narration and Shorts first.";return}
+  btn.disabled=true;btn.textContent="Adding Captions…";status.textContent="Burning captions into 3 Shorts…";
+  try{var r=await fetch(API_BASE+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,narration:narration})});var d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Caption render failed");
+    shortRenderUrls=d.shorts.map(function(x){return API_BASE+x});status.textContent="Shorts captions ready ✓";btn.textContent="↻ Rebuild Captions";sessionStorage.setItem("captionsReady","1");
+  }catch(e){status.textContent="Captions failed: "+e.message;btn.textContent="Try Captions Again"}finally{btn.disabled=false}
+}
+var captionButton=document.getElementById("burnCaptions");if(captionButton)captionButton.onclick=function(e){e.preventDefault();burnShortCaptions()};
 async function generateShorts(){
   var btn=document.getElementById("generateShorts"),status=document.getElementById("shortsStatus"),id=localStorage.getItem("activeProjectId");
   if(!id){status.textContent="Render the Long MP4 first.";return}
