@@ -32,7 +32,7 @@ app.post("/api/ai/script",async(req,res)=>{
   const prompt="Create an original faceless YouTube video script in natural American English. Topic: "+title+"\nAudience: "+audience+"\nTarget duration: "+duration+"\nReturn ONLY valid JSON with keys hook (string), outline (array of 5 strings), narration (string), shortsAngles (array of 3 strings). Avoid unsupported factual claims and avoid copying source text.";
   if(geminiKey){
     try{
-      const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
+      const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
       const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
