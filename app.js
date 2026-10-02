@@ -255,4 +255,3 @@ $("connectYouTube").onclick=async function(){
   $("connectYouTube").disabled=false;
   $("connectYouTube").textContent="Check Connection";
 };
-checkBackend();
