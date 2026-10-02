@@ -232,8 +232,14 @@ app.post("/api/captions/analyze",async(req,res)=>{
     if(!words.length)return res.status(502).json({error:"Precision transcription unavailable. Stable captions are unchanged."});
     const valid=words.filter(x=>x.word&&Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start).sort((a,b)=>a.start-b.start);
     if(valid.length<3)return res.status(502).json({error:"Timestamp result was not valid enough to use."});
+    const audioDuration=await getDuration(voicePath).catch(()=>valid[valid.length-1].end);
+    let overlaps=0,largeGaps=0;for(let i=1;i<valid.length;i++){if(valid[i].start<valid[i-1].start)overlaps++;if(valid[i].start-valid[i-1].end>3)largeGaps++}
+    const first=valid[0].start,last=valid[valid.length-1].end,coverage=audioDuration>0?Math.max(0,Math.min(1,(last-first)/audioDuration)):0;
+    const quality=valid.length>=10&&overlaps===0&&coverage>=0.65&&last<=audioDuration+5;
+    const report={status:quality?"ok":"needs-review",projectId,wordCount:valid.length,start:first,end:last,audioDuration,coverage:Number(coverage.toFixed(3)),overlaps,largeGaps,timing:"word-level",validated:quality};
     await writeFile(join(projectDir,"word-timestamps.json"),JSON.stringify(valid,null,2));
-    res.json({status:"ok",projectId,wordCount:valid.length,start:valid[0].start,end:valid[valid.length-1].end,timing:"word-level",cached:true});
+    await writeFile(join(projectDir,"word-timestamps-report.json"),JSON.stringify(report,null,2));
+    res.status(quality?200:422).json(report);
   }catch(e){console.error("Caption timing analyze failed",e);res.status(500).json({error:e.message||"Caption timing analysis failed"})}
 });
 
