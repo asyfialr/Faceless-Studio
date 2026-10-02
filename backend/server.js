@@ -190,6 +190,27 @@ app.post("/api/render/mp4",async(req,res)=>{
   finally{await rm(dir,{recursive:true,force:true}).catch(()=>{})}
 });
 
+app.post("/api/render/shorts",async(req,res)=>{
+  const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");
+  if(!projectId)return res.status(400).json({error:"project_id_required"});
+  const projectDir=join(storageRoot,projectId),input=join(projectDir,"long.mp4");
+  try{
+    await readFile(input);
+    const outputs=[];
+    for(let i=0;i<3;i++){
+      const out=join(projectDir,`short-${i+1}.mp4`),start=i*20;
+      await new Promise((resolve,reject)=>{
+        const args=["-y","-ss",String(start),"-i",input,"-t","20","-vf","scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p","-c:v","libx264","-preset","veryfast","-c:a","aac","-b:a","128k","-movflags","+faststart",out];
+        const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",code=>code===0?resolve():reject(new Error("Short "+(i+1)+" FFmpeg "+code+" "+err.slice(-700))));
+      });
+      outputs.push("/media/"+projectId+"/short-"+(i+1)+".mp4");
+    }
+    const metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch(e){}
+    meta.shorts=outputs;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,shorts:outputs});
+  }catch(error){res.status(500).json({error:"shorts_render_failed",message:error.message})}
+});
+
 const storageRoot=process.env.STORAGE_DIR||"/data";
 app.use("/media",express.static(storageRoot,{maxAge:"1h"}));
 app.get("/api/projects/:id",async(req,res)=>{
