@@ -58,29 +58,37 @@ $("generateIdeas").onclick=generatePrototypeIdeas;
 if(localStorage.niche)$("ideaNiche").value=localStorage.niche;
 if(localStorage.audience)$("ideaAudience").value=localStorage.audience;
 
-function buildScriptDraft(){
+async function buildScriptDraft(){
   if(!selectedTitle||selectedTitle==="Untitled AI Video"){ $("scriptOutput").textContent="Choose an idea from the Ideas tab first."; return; }
-  $("generateScript").disabled=true;$("generateScript").textContent="Generating…";
-  setTimeout(function(){
-    var hook="Most people see this as another tech trend. But the real change is happening quietly—and it could reshape how ordinary people work, create, and make decisions.";
-    var outline=["Cold open: challenge the viewer's assumption","Explain the shift in simple terms","Show 3 real-world implications","Explore risks and limitations","End with what viewers should watch next"];
+  $("generateScript").disabled=true;$("generateScript").textContent="Generating with AI…";
+  try{
+    var r=await fetch(API_BASE+"/api/ai/script",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({title:selectedTitle,audience:localStorage.audience||"US / International",duration:localStorage.duration||"8-10 minutes"})
+    });
+    var data=await r.json();
+    if(!r.ok)throw new Error(data.message||data.details||data.error||"AI request failed");
+    var x=data.script;
     $("scriptOutput").classList.remove("empty");
     $("scriptOutput").innerHTML=
-      '<div class="script-block"><h3>Hook</h3><p>'+hook+'</p></div>'+
-      '<div class="script-block"><h3>Outline</h3><ol>'+outline.map(function(x){return "<li>"+x+"</li>"}).join("")+'</ol></div>'+
-      '<div class="script-block"><h3>Narration Draft</h3><p>'+hook+' In this video, we break down '+selectedTitle+' without the hype. We will look at what is changing, why it matters, where the biggest opportunities may appear, and which claims still deserve skepticism. The goal is to leave the viewer with a clear picture of the trend and the signals worth following next.</p></div>'+
-      '<div class="script-block"><h3>Shorts Angles</h3><ol><li>The surprising change in 30 seconds</li><li>The biggest misconception</li><li>What happens next?</li></ol></div>'+
+      '<div class="script-block"><h3>Hook</h3><p>'+escapeHtml(x.hook||"")+'</p></div>'+
+      '<div class="script-block"><h3>Outline</h3><ol>'+(x.outline||[]).map(function(v){return "<li>"+escapeHtml(v)+"</li>"}).join("")+'</ol></div>'+
+      '<div class="script-block"><h3>Narration Draft</h3><p>'+escapeHtml(x.narration||"")+'</p></div>'+
+      '<div class="script-block"><h3>Shorts Angles</h3><ol>'+(x.shortsAngles||[]).map(function(v){return "<li>"+escapeHtml(v)+"</li>"}).join("")+'</ol></div>'+
       '<button id="sendProduction" class="primary">Send to Production</button>';
     $("sendProduction").onclick=function(){
-  sessionStorage.setItem("selectedTitle",selectedTitle);
-  sessionStorage.setItem("scriptReady","1");
-  $("productionTitle").textContent=selectedTitle;
-  $("productionStatus").textContent="Script approved. Production is ready to start.";
-  location.hash="productionStudio";
-};
-    $("generateScript").disabled=false;$("generateScript").textContent="Regenerate Draft";
-  },650);
+      sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");
+      $("productionTitle").textContent=selectedTitle;$("productionStatus").textContent="AI script approved. Production is ready to start.";
+      location.hash="productionStudio";
+    };
+    $("generateScript").textContent="Regenerate with AI";
+  }catch(e){
+    $("scriptOutput").classList.remove("empty");
+    $("scriptOutput").textContent=e.message==="OPENAI_API_KEY is not configured on the server."?"AI belum diaktifkan. Tambahkan OPENAI_API_KEY di Railway → Variables.":"AI generation failed: "+e.message;
+    $("generateScript").textContent="Try Again";
+  }finally{$("generateScript").disabled=false}
 }
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]})}
 $("generateScript").onclick=buildScriptDraft;
 syncHash();
 
