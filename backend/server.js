@@ -226,23 +226,23 @@ app.post("/api/render/captions",async(req,res)=>{
   };
   const render=async(input,out,chunks,duration,w,font,y,label,speechBounds)=>{
     const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),fallback=[0];weights.forEach(x=>fallback.push(fallback[fallback.length-1]+duration*x/totalWeight));const bounds=Array.isArray(speechBounds)&&speechBounds.length===chunks.length+1?speechBounds:fallback;
-    const maxTextWidth=Math.round(w*(label==="long"?.82:.78)),rowH=label==="long"?118:142;
-    const cols=Math.min(8,Math.max(1,Math.ceil(Math.sqrt(chunks.length)))),rows=Math.ceil(chunks.length/cols),spriteW=w*cols,spriteH=rowH*rows;
-    const canvas=createCanvas(spriteW,spriteH),ctx=canvas.getContext("2d");ctx.clearRect(0,0,spriteW,spriteH);ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.strokeStyle="black";ctx.fillStyle="white";
-    const wrap=(text,fs)=>{ctx.font="700 "+fs+"px CaptionInter";const ws=text.split(/\s+/),lines=[];let line="";for(const word of ws){const t=line?line+" "+word:word;if(ctx.measureText(t).width<=maxTextWidth||!line)line=t;else{lines.push(line);line=word}}if(line)lines.push(line);return lines};
-    for(let i=0;i<chunks.length;i++){let fs=font,lines=wrap(chunks[i],fs);while((lines.length>2||lines.some(x=>ctx.measureText(x).width>maxTextWidth))&&fs>22){fs-=2;lines=wrap(chunks[i],fs)}ctx.font="700 "+fs+"px CaptionInter";ctx.lineWidth=Math.max(5,Math.round(fs*.16));const lh=Math.round(fs*1.18),col=i%cols,row=Math.floor(i/cols),cx=col*w+w/2,cy=row*rowH+rowH/2,top=cy-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,cx,yy,maxTextWidth);ctx.fillText(line,cx,yy,maxTextWidth)})}
-    const sprite=join(projectDir,`cap-sprite-${label}.png`);await writeFile(sprite,canvas.toBuffer("image/png"));
-    const cmdFile=join(projectDir,`cap-cmd-${label}.txt`);
-    const cmds=[];
+    const maxTextWidth=Math.round(w*(label==="long"?.82:.78)),rowH=label==="long"?118:142,imgs=[];
+    const wrap=(ctx,text,maxWidth)=>{const ws=text.split(/\s+/),lines=[];let line="";for(const word of ws){const t=line?line+" "+word:word;if(ctx.measureText(t).width<=maxWidth||!line)line=t;else{lines.push(line);line=word}}if(line)lines.push(line);return lines};
     for(let i=0;i<chunks.length;i++){
-      const col=i%cols,row=Math.floor(i/cols),t=Math.max(0,bounds[i]).toFixed(3);
-      cmds.push(`${t} crop@cap x ${col*w};`);
-      cmds.push(`${t} crop@cap y ${row*rowH};`);
+      let fs=font,canvas=createCanvas(w,rowH),ctx=canvas.getContext("2d"),lines;do{ctx.font="700 "+fs+"px CaptionInter";lines=wrap(ctx,chunks[i],maxTextWidth);if(lines.length<=2&&lines.every(x=>ctx.measureText(x).width<=maxTextWidth))break;fs-=2}while(fs>22);
+      ctx.clearRect(0,0,w,rowH);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";const lh=Math.round(fs*1.18),top=rowH/2-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
+      const img=join(projectDir,`cap-${label}-${i}.png`);await writeFile(img,canvas.toBuffer("image/png"));imgs.push(img);
     }
-    await writeFile(cmdFile,cmds.join("\n"));
-    const filter=`[1:v]sendcmd=f='${cmdFile}',crop@cap=${w}:${rowH}:0:0[cap];[0:v][cap]overlay=(W-w)/2:${y}:shortest=1[v]`;
-    await ff(["-y","-i",input,"-i",sprite,"-filter_complex",filter,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","copy","-movflags","+faststart",out],label+" caption render");
-    await rm(sprite,{force:true}).catch(()=>{});await rm(cmdFile,{force:true}).catch(()=>{});
+    let current=input,tempFiles=[],batch=6;
+    for(let start=0;start<imgs.length;start+=batch){
+      const end=Math.min(imgs.length,start+batch),outPart=end===imgs.length?out:join(projectDir,`cap-pass-${label}-${start}.mp4`),args=["-y","-i",current];
+      for(let i=start;i<end;i++)args.push("-loop","1","-i",imgs[i]);
+      let fc="[0:v]setpts=PTS-STARTPTS[v0]";let prev="v0";
+      for(let i=start;i<end;i++){const inp=i-start+1,next="v"+(i-start+1),st=bounds[i].toFixed(3),en=bounds[i+1].toFixed(3);fc+=`;[${prev}][${inp}:v]overlay=(W-w)/2:${y}:enable='between(t,${st},${en})':shortest=1[${next}]`;prev=next}
+      args.push("-filter_complex",fc,"-map",`[${prev}]`,"-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","copy","-movflags","+faststart",outPart);
+      await ff(args,label+" caption batch "+(Math.floor(start/batch)+1));if(current!==input)tempFiles.push(current);current=outPart;
+    }
+    await Promise.all(imgs.map(x=>rm(x,{force:true}).catch(()=>{})));await Promise.all(tempFiles.map(x=>rm(x,{force:true}).catch(()=>{})));
   };
   try{
     const longChunks=[];for(let i=0;i<words.length;i+=6)longChunks.push(words.slice(i,i+6).join(" "));
