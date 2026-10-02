@@ -11,7 +11,7 @@ app.use(express.json({limit:"1mb"}));
 app.get("/api/health",(req,res)=>res.json({
   status:"ok",
   service:"Faceless Studio Backend",
-  version:"1.4.0"
+  version:"1.4.1"
 }));
 
 app.get("/api/capabilities",(req,res)=>res.json({
@@ -32,7 +32,7 @@ app.post("/api/ai/script",async(req,res)=>{
   const prompt="Create an original faceless YouTube video script in natural American English. Topic: "+title+"\nAudience: "+audience+"\nTarget duration: "+duration+"\nReturn ONLY valid JSON with keys hook (string), outline (array of 5 strings), narration (string), shortsAngles (array of 3 strings). Avoid unsupported factual claims and avoid copying source text.";
   if(geminiKey){
     try{
-      const models=[process.env.GEMINI_MODEL||"gemini-3.8-flash","gemini-3.7-flash","gemini-3.6-flash"].filter((v,i,a)=>v&&a.indexOf(v)===i);
+      const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);
       let model=models[0];
       let r,data;
       for(const candidate of models){
@@ -60,7 +60,7 @@ app.post("/api/ai/script",async(req,res)=>{
       }
       const detail=data?.error?.message||"Gemini request failed";
       const busy=r.status===429||r.status===503||/high demand|temporar|overload|unavailable/i.test(detail);
-      return res.status(busy?503:502).json({error:busy?"gemini_busy":"gemini_error",provider:"gemini",details:busy?"Gemini is busy right now. Automatic retries were attempted. Please try again shortly.":detail});
+      return res.status(busy?503:502).json({error:busy?"gemini_busy":"gemini_error",provider:"gemini",details:busy?"Gemini model "+model+" is busy right now. Automatic retries were attempted. Please try again shortly.":detail});
     }catch(error){
       return res.status(500).json({error:"gemini_generation_failed",provider:"gemini",message:error.message});
     }
@@ -84,7 +84,7 @@ app.post("/api/ai/visual-plan",async(req,res)=>{
   if(!geminiKey)return res.status(503).json({error:"gemini_not_configured"});
   if(!narration)return res.status(400).json({error:"narration_required"});
   try{
-    const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+    const model=process.env.GEMINI_PLANNER_MODEL||"gemini-3.5-flash-lite";
     const prompt="Create a visual plan for an original faceless YouTube video. Title: "+title+"\nNarration: "+narration.slice(0,12000)+"\nReturn ONLY valid JSON with key scenes. scenes must be an array of 6 to 10 objects with keys: scene (number), duration (short string like 8-12 sec), visualPrompt (specific original B-roll/image/video direction), onScreenText (short string, may be empty). Keep visuals safe, realistic, copyright-conscious, and suitable for a US/international audience.";
     let r,data;
     for(let attempt=1;attempt<=3;attempt++){
