@@ -1,12 +1,17 @@
 import express from "express";
 import cors from "cors";
+import ffmpegPath from "ffmpeg-static";
+import {spawn} from "node:child_process";
+import {mkdtemp,writeFile,readFile,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 
 const app=express();
 const port=process.env.PORT||3000;
 const allowedOrigin=process.env.FRONTEND_ORIGIN||"https://asyfialr.github.io";
 
 app.use(cors({origin:allowedOrigin}));
-app.use(express.json({limit:"1mb"}));
+app.use(express.json({limit:"40mb"}));
 
 app.get("/api/health",(req,res)=>res.json({
   status:"ok",
@@ -148,6 +153,33 @@ app.post("/api/ai/voice",async(req,res)=>{
     if(!audio)return res.status(502).json({error:"audio_missing",details:"Gemini TTS completed but no audio block was found in the response."});
     res.json({ok:true,provider:"gemini",model,mimeType:"audio/wav",audio});
   }catch(error){res.status(500).json({error:"tts_generation_failed",message:error.message})}
+});
+
+app.post("/api/render/mp4",async(req,res)=>{
+  const scenes=Array.isArray(req.body?.scenes)?req.body.scenes:[];
+  const audio=String(req.body?.audio||"");
+  if(!scenes.length||!audio)return res.status(400).json({error:"render_assets_required",message:"Scenes and voice audio are required."});
+  const dir=await mkdtemp(join(tmpdir(),"faceless-"));
+  try{
+    const durations=[];
+    for(let i=0;i<scenes.length;i++){
+      const base64=String(scenes[i].image||"").replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/,"");
+      if(!base64)throw new Error("Missing image for scene "+(i+1));
+      await writeFile(join(dir,`scene-${i}.jpg`),Buffer.from(base64,"base64"));
+      const n=parseFloat(String(scenes[i].duration||"5").match(/[\d.]+/)?.[0]||"5");durations.push(Math.max(2,Math.min(30,n)));
+    }
+    const audio64=audio.replace(/^data:audio\/[a-zA-Z0-9.+-]+;base64,/,"");
+    await writeFile(join(dir,"voice.wav"),Buffer.from(audio64,"base64"));
+    const list=durations.map((d,i)=>`file 'scene-${i}.jpg'\nduration ${d}`).join("\n")+"\nfile 'scene-"+(scenes.length-1)+".jpg'\n";
+    await writeFile(join(dir,"list.txt"),list);
+    const out=join(dir,"output.mp4");
+    await new Promise((resolve,reject)=>{
+      const args=["-y","-f","concat","-safe","0","-i",join(dir,"list.txt"),"-i",join(dir,"voice.wav"),"-vf","scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p","-c:v","libx264","-preset","veryfast","-r","30","-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",out];
+      const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-4000));cp.on("error",reject);cp.on("close",code=>code===0?resolve():reject(new Error("FFmpeg exited "+code+" "+err.slice(-1200))));
+    });
+    const video=await readFile(out);res.setHeader("Content-Type","video/mp4");res.setHeader("Content-Length",video.length);res.send(video);
+  }catch(error){res.status(500).json({error:"render_failed",message:error.message})}
+  finally{await rm(dir,{recursive:true,force:true}).catch(()=>{})}
 });
 
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
