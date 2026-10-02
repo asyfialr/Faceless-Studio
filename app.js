@@ -387,7 +387,7 @@ async function analyzeCaptionTiming(){
   var btn=document.getElementById("analyzeCaptionTiming"),status=document.getElementById("captionTimingStatus"),id=localStorage.getItem("activeProjectId");
   if(!id){status.textContent="Render the Long MP4 first.";return}
   btn.disabled=true;btn.textContent="Analyzing…";status.textContent="Analyzing voice.wav for word timestamps…";
-  try{var r=await fetch(API_BASE+"/api/captions/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id})});var d=await r.json();if(!r.ok)throw new Error(d.error||"Timing analysis failed");status.textContent="Precision timing ready ✓ "+d.wordCount+" words • "+Number(d.start).toFixed(1)+"s–"+Number(d.end).toFixed(1)+"s";btn.textContent="↻ Re-analyze Timing";sessionStorage.setItem("captionTimingReady","1")}
+  try{var r=await fetch(API_BASE+"/api/captions/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id})});var d=await r.json();if(!r.ok)throw new Error(d.error||"Timing analysis failed");status.textContent="Precision timing validated ✓ "+d.wordCount+" words • "+Math.round((d.coverage||0)*100)+"% audio coverage • "+Number(d.start).toFixed(1)+"s–"+Number(d.end).toFixed(1)+"s";btn.textContent="↻ Re-analyze Timing";sessionStorage.setItem("captionTimingReady","1")}
   catch(e){status.textContent="Precision timing failed: "+e.message+" Stable captions are unchanged.";btn.textContent="Try Timing Again"}
   finally{btn.disabled=false}
 }
