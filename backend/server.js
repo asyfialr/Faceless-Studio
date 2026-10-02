@@ -208,8 +208,24 @@ app.post("/api/render/captions",async(req,res)=>{
   const projectDir=join(storageRoot,projectId),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
   const xml=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const ff=(args,label)=>new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))))});
-  const render=async(input,out,chunks,duration,w,font,y,label)=>{
-    const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),bounds=[0];weights.forEach(x=>bounds.push(bounds[bounds.length-1]+duration*x/totalWeight));const parts=[];
+  const getSpeechWindows=async(audioPath,duration,count)=>{
+    if(!count)return [];
+    const raw=join(projectDir,"caption-audio.raw");
+    try{
+      await ff(["-y","-i",audioPath,"-ac","1","-ar","8000","-f","s16le",raw],"caption audio analysis");
+      const buf=await readFile(raw),samples=new Int16Array(buf.buffer,buf.byteOffset,Math.floor(buf.length/2)),rate=8000,frame=400;
+      const energy=[];for(let i=0;i<samples.length;i+=frame){let sum=0,n=Math.min(frame,samples.length-i);for(let k=0;k<n;k++){const v=samples[i+k];sum+=v*v}energy.push(Math.sqrt(sum/Math.max(1,n)))}
+      const sorted=[...energy].sort((a,b)=>a-b),noise=sorted[Math.floor(sorted.length*.3)]||0,peak=sorted[Math.floor(sorted.length*.9)]||1,threshold=Math.max(noise*2.2,peak*.12,120);
+      const active=energy.map(e=>e>threshold);for(let i=1;i<active.length-1;i++)if(!active[i]&&active[i-1]&&active[i+1])active[i]=true;
+      const speech=[];let st=-1;for(let i=0;i<=active.length;i++){if(i<active.length&&active[i]&&st<0)st=i;if((i===active.length||!active[i])&&st>=0){if(i-st>=2)speech.push([st*frame/rate,Math.min(duration,i*frame/rate)]);st=-1}}
+      if(!speech.length)return [];
+      const totalSpeech=speech.reduce((a,x)=>a+x[1]-x[0],0),targets=[];for(let i=0;i<=count;i++)targets.push(totalSpeech*i/count);
+      const timeAt=target=>{let acc=0;for(const [a,b] of speech){const d=b-a;if(acc+d>=target)return a+(target-acc);acc+=d}return speech[speech.length-1][1]};
+      const bounds=targets.map(timeAt);bounds[0]=Math.max(0,speech[0][0]-.08);bounds[bounds.length-1]=Math.min(duration,speech[speech.length-1][1]+.12);return bounds;
+    }catch(e){console.error("Speech alignment fallback:",e.message);return []}finally{await rm(raw,{force:true}).catch(()=>{})}
+  };
+  const render=async(input,out,chunks,duration,w,font,y,label,speechBounds)=>{
+    const weights=chunks.map(x=>Math.max(1,x.replace(/[^A-Za-z0-9]/g,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),fallback=[0];weights.forEach(x=>fallback.push(fallback[fallback.length-1]+duration*x/totalWeight));const bounds=Array.isArray(speechBounds)&&speechBounds.length===chunks.length+1?speechBounds:fallback;const parts=[];
     const maxTextWidth=Math.round(w*(label==="long"?.82:.78));
     const wrap=(ctx,text,maxWidth)=>{
       const ws=text.split(/\s+/),lines=[];let line="";
@@ -243,11 +259,12 @@ app.post("/api/render/captions",async(req,res)=>{
     if(!longDuration){
       longDuration=await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",join(projectDir,"long.mp4"),"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):resolve(67)});cp.on("error",reject)});
     }
-    await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long");
+    const longSpeechBounds=voiceAvailable?await getSpeechWindows(voicePath,longDuration,longChunks.length):[];
+    await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
     for(let i=0;i<3;i++){const sw=words.slice(i*28,(i+1)*28),chunks=[];for(let k=0;k<sw.length;k+=4)chunks.push(sw.slice(k,k+4).join(" "));const use=chunks.length?chunks:[words.slice(0,4).join(" ")];await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1));outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")}
-    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=voiceAvailable?"voice-duration-weighted":"video-duration-weighted";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:voiceAvailable?"voice-duration-weighted":"video-duration-weighted"});
+    const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=longSpeechBounds.length?"voice-activity-aligned":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:longSpeechBounds.length?"voice-activity-aligned":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
 });
 
