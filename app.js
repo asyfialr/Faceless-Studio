@@ -337,5 +337,24 @@ async function generateAllVisuals(){
   progress.textContent="Batch complete • "+ok+"/"+buttons.length+" visuals ready"+(failed?" • "+failed+" failed":"")+" ✓";
   master.textContent=failed?"Retry / Generate All Visuals":"↻ Regenerate All Visuals";master.disabled=false;
 }
+function buildSceneMotion(){
+  var status=document.getElementById("motionPlanStatus"),btn=document.getElementById("buildMotionPlan"),scenes=[],queue=[];
+  try{scenes=JSON.parse(sessionStorage.getItem("visualPlan")||"[]");queue=JSON.parse(sessionStorage.getItem("mediaQueue")||"[]")}catch(e){}
+  if(!scenes.length){status.textContent="Generate a Visual Plan first.";return}
+  var generated=new Set(queue.filter(function(x){return x.status==="generated"}).map(function(x){return x.scene}));
+  var motions=["slow-zoom-in","pan-left","slow-zoom-out","pan-right"];
+  var plan=scenes.map(function(s,i){return {scene:s.scene,duration:s.duration,motion:motions[i%motions.length],visualReady:generated.has(s.scene)}});
+  sessionStorage.setItem("motionPlan",JSON.stringify(plan));
+  document.querySelectorAll(".plan-scene").forEach(function(card,i){
+    var old=card.querySelector(".scene-motion");if(old)old.remove();
+    var note=document.createElement("div");note.className="scene-motion muted";
+    note.textContent="Motion: "+plan[i].motion.replaceAll("-"," ")+" • "+plan[i].duration;
+    card.appendChild(note);
+  });
+  var ready=plan.filter(function(x){return x.visualReady}).length;
+  status.textContent="Motion plan ready ✓ "+plan.length+" scenes • "+ready+" visuals available";
+  btn.textContent="↻ Rebuild Scene Motion";$("productionStatus").textContent="Scene motion plan ready ✓";
+}
+var motionButton=document.getElementById("buildMotionPlan");if(motionButton)motionButton.onclick=function(e){e.preventDefault();buildSceneMotion()};
 var generateAllButton=document.getElementById("generateAllVisuals");if(generateAllButton)generateAllButton.onclick=function(ev){ev.preventDefault();generateAllVisuals()};
 document.addEventListener("click",function(e){if(e.target&&e.target.classList.contains("generate-scene-media"))prepareSceneMedia(Number(e.target.getAttribute("data-scene")),e.target)});
