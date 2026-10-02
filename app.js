@@ -233,10 +233,14 @@ async function restorePersistentProject(){
   try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return;
     var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
     var rv=document.getElementById("renderedVideo");if(rv){rv.src=longRenderUrl;rv.style.display="block"}
-    if(location.hash==="#reviewStudio")selectPreview(0);
-  }catch(e){}
+    var pv=document.getElementById("previewVideo"),ph=document.getElementById("previewPlaceholder");
+    if(pv){pv.src=longRenderUrl;pv.load()}if(ph)ph.style.display="none";
+    var rs=document.getElementById("renderStatus");if(rs)rs.textContent="Persistent MP4 restored ✓";
+    var pm=document.getElementById("previewMessage");if(pm)pm.textContent="Saved Long MP4 restored from storage ✓";
+    if(location.hash==="#reviewStudio")setTimeout(function(){selectPreview(0)},50);
+  }catch(e){var pm=document.getElementById("previewMessage");if(pm)pm.textContent="Storage restore failed: "+e.message}
 }
-restorePersistentProject();
+window.addEventListener("load",function(){setTimeout(restorePersistentProject,250)});
 async function fetchWithTimeout(url,ms){
   const controller=new AbortController();
   const timer=setTimeout(function(){controller.abort()},ms);
