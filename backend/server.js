@@ -197,16 +197,17 @@ app.post("/api/render/captions",async(req,res)=>{
   const projectDir=join(storageRoot,projectId);
   try{
     const words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
-    const chunks=[];for(let i=0;i<words.length;i+=7)chunks.push(words.slice(i,i+7).join(" "));
+    const chunks=[];for(let i=0;i<words.length;i+=4)chunks.push(words.slice(i,i+4).join(" "));
     const escapeSrt=t=>t.replace(/-->/g,"→").replace(/[<>]/g,"");
     const stamp=n=>{const ms=Math.max(0,Math.round(n*1000)),hh=String(Math.floor(ms/3600000)).padStart(2,"0"),mm=String(Math.floor(ms%3600000/60000)).padStart(2,"0"),ss=String(Math.floor(ms%60000/1000)).padStart(2,"0"),mmm=String(ms%1000).padStart(3,"0");return hh+":"+mm+":"+ss+","+mmm};
-    const total=60,step=total/Math.max(1,chunks.length);
-    const srt=chunks.map((x,i)=>(i+1)+"\n"+stamp(i*step)+" --> "+stamp((i+1)*step)+"\n"+escapeSrt(x)+"\n").join("\n");
-    await writeFile(join(projectDir,"captions.srt"),srt);
     const outputs=[];
     for(let i=0;i<3;i++){
       const input=join(projectDir,`short-${i+1}.mp4`),out=join(projectDir,`short-${i+1}-captioned.mp4`);
-      const vf="subtitles="+join(projectDir,"captions.srt").replace(/\\/g,"/").replace(/:/g,"\\:")+":force_style='FontSize=18,Alignment=2,MarginV=90,Outline=2'";
+      const duration=20,segmentWords=words.slice(i*28,(i+1)*28),localChunks=[];for(let k=0;k<segmentWords.length;k+=4)localChunks.push(segmentWords.slice(k,k+4).join(" "));
+      const useChunks=localChunks.length?localChunks:chunks.slice(0,7),step=duration/Math.max(1,useChunks.length);
+      const srt=useChunks.map((x,k)=>(k+1)+"\n"+stamp(k*step)+" --> "+stamp(Math.min(duration,(k+1)*step))+"\n"+escapeSrt(x)+"\n").join("\n");
+      const srtPath=join(projectDir,`short-${i+1}.srt`);await writeFile(srtPath,srt);
+      const vf="subtitles="+srtPath.replace(/\\/g,"/").replace(/:/g,"\\:")+":force_style='FontSize=22,Bold=1,Alignment=2,MarginV=180,Outline=3,Shadow=1'";
       await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-y","-i",input,"-vf",vf,"-c:v","libx264","-preset","ultrafast","-threads","1","-c:a","copy","-movflags","+faststart",out]);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Caption "+(i+1)+" code="+code+" signal="+(signal||"none")+" "+err.slice(-800))))});
       outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4");
     }
