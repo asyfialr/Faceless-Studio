@@ -228,6 +228,15 @@ $("previewRegenerate").onclick=function(){
 selectPreview(0);
 
 const API_BASE="https://faceless-studio-production-c487.up.railway.app";
+async function restorePersistentProject(){
+  var id=localStorage.getItem("activeProjectId");if(!id)return;
+  try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return;
+    var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
+    var rv=document.getElementById("renderedVideo");if(rv){rv.src=longRenderUrl;rv.style.display="block"}
+    if(location.hash==="#reviewStudio")selectPreview(0);
+  }catch(e){}
+}
+restorePersistentProject();
 async function fetchWithTimeout(url,ms){
   const controller=new AbortController();
   const timer=setTimeout(function(){controller.abort()},ms);
@@ -374,9 +383,11 @@ async function renderMp4(){
   if(!voice||!voice.src||!voice.src.startsWith("data:audio")){status.textContent="Generate Voice first.";return}
   btn.disabled=true;btn.textContent="Rendering…";status.textContent="Uploading assets and rendering MP4 on Railway…";
   try{
-    var r=await fetch(API_BASE+"/api/render/mp4",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scenes:scenes,audio:voice.src})});
+    var r=await fetch(API_BASE+"/api/render/mp4",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scenes:scenes,audio:voice.src,projectId:localStorage.getItem("activeProjectId")||"",title:sessionStorage.getItem("selectedTitle")||"Faceless Studio Project"})});
     if(!r.ok){var d=await r.json().catch(function(){return {}});throw new Error(d.message||d.error||"Render failed")}
-    var blob=await r.blob();if(longRenderUrl)URL.revokeObjectURL(longRenderUrl);var url=URL.createObjectURL(blob);longRenderUrl=url;player.dataset.url=url;player.src=url;player.load();player.style.display="block";
+    var projectId=r.headers.get("X-Project-Id"),persistentPath=r.headers.get("X-Video-Url");if(projectId)localStorage.setItem("activeProjectId",projectId);
+    var blob=await r.blob();if(longRenderUrl&&longRenderUrl.startsWith("blob:"))URL.revokeObjectURL(longRenderUrl);
+    var url=persistentPath?API_BASE+persistentPath:URL.createObjectURL(blob);longRenderUrl=url;player.dataset.url=url;player.src=url;player.load();player.style.display="block";
     status.textContent="MP4 render ready ✓ "+(blob.size/1024/1024).toFixed(1)+" MB";btn.textContent="↻ Render Again";
     var reviewPlayer=document.getElementById("previewVideo"),placeholder=document.getElementById("previewPlaceholder");
     if(reviewPlayer){reviewPlayer.dataset.url=url;reviewPlayer.src=url;reviewPlayer.load()}
