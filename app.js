@@ -235,7 +235,7 @@ const API_BASE="https://faceless-studio-production-c487.up.railway.app";
 async function restorePersistentProject(){
   var id=localStorage.getItem("activeProjectId");if(!id)return;
   try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return;
-    var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;if(Array.isArray(p.shorts))shortRenderUrls=p.shorts.map(function(x){return API_BASE+x});sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
+    var p=await r.json();if(!p.longVideoUrl)return;longRenderUrl=API_BASE+p.longVideoUrl;if(Array.isArray(p.shorts))shortRenderUrls=p.shorts.map(function(x){return API_BASE+x+"?v="+new Date(p.updatedAt||Date.now()).getTime()});sessionStorage.setItem("renderReady","1");sessionStorage.setItem("productionReady","1");
     var rv=document.getElementById("renderedVideo");if(rv){rv.src=longRenderUrl;rv.style.display="block"}
     var pv=document.getElementById("previewVideo"),ph=document.getElementById("previewPlaceholder");
     if(pv){pv.src=longRenderUrl;pv.load()}if(ph)ph.style.display="none";
@@ -388,7 +388,7 @@ async function burnShortCaptions(){
   if(!id||!narration){status.textContent="Generate narration and Shorts first.";return}
   btn.disabled=true;btn.textContent="Adding Captions…";status.textContent="Burning captions into 3 Shorts…";
   try{var r=await fetch(API_BASE+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,narration:narration})});var d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Caption render failed");
-    shortRenderUrls=d.shorts.map(function(x){return API_BASE+x});status.textContent="Shorts captions ready ✓";btn.textContent="↻ Rebuild Captions";sessionStorage.setItem("captionsReady","1");
+    shortRenderUrls=d.shorts.map(function(x){return API_BASE+x+"?v="+Date.now()});status.textContent="Shorts captions ready ✓";btn.textContent="↻ Rebuild Captions";sessionStorage.setItem("captionsReady","1");if(activePreview>0){selectPreview(activePreview)}
   }catch(e){status.textContent="Captions failed: "+e.message;btn.textContent="Try Captions Again"}finally{btn.disabled=false}
 }
 var captionButton=document.getElementById("burnCaptions");if(captionButton)captionButton.onclick=function(e){e.preventDefault();burnShortCaptions()};
