@@ -33,16 +33,26 @@ app.post("/api/ai/script",async(req,res)=>{
   if(geminiKey){
     try{
       const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
-      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
-      });
-      const data=await r.json();
+      let r,data;
+      for(let attempt=1;attempt<=3;attempt++){
+        r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
+        });
+        data=await r.json();
+        if(r.ok)break;
+        const msg=String(data?.error?.message||"");
+        const temporary=r.status===429||r.status===503||/high demand|temporar|overload|unavailable/i.test(msg);
+        if(!temporary||attempt===3)break;
+        await new Promise(resolve=>setTimeout(resolve,attempt*1500));
+      }
       if(r.ok){
         const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
         return res.json({ok:true,provider:"gemini",model,script:JSON.parse(raw)});
       }
-      return res.status(502).json({error:"gemini_error",provider:"gemini",details:data?.error?.message||"Gemini request failed"});
+      const detail=data?.error?.message||"Gemini request failed";
+      const busy=r.status===429||r.status===503||/high demand|temporar|overload|unavailable/i.test(detail);
+      return res.status(busy?503:502).json({error:busy?"gemini_busy":"gemini_error",provider:"gemini",details:busy?"Gemini is busy right now. Automatic retries were attempted. Please try again shortly.":detail});
     }catch(error){
       return res.status(500).json({error:"gemini_generation_failed",provider:"gemini",message:error.message});
     }
