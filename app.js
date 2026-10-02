@@ -207,3 +207,43 @@ $("previewRegenerate").onclick=function(){
   $("previewMessage").textContent="Marked for regeneration. Real regeneration will be connected to the renderer backend.";
 };
 selectPreview(0);
+
+const API_BASE="https://faceless-studio-production-c487.up.railway.app";
+async function checkBackend(){
+  $("backendState").textContent="Checking backend…";
+  $("backendDot").className="status-dot";
+  try{
+    const [healthRes,capRes]=await Promise.all([
+      fetch(API_BASE+"/api/health",{cache:"no-store"}),
+      fetch(API_BASE+"/api/capabilities",{cache:"no-store"})
+    ]);
+    if(!healthRes.ok||!capRes.ok)throw new Error("Backend unavailable");
+    const health=await healthRes.json();
+    const caps=await capRes.json();
+    $("backendState").textContent="Backend Online ✓";
+    $("backendUrl").textContent=health.service+" • v"+health.version;
+    $("backendDot").className="status-dot online";
+    $("ytState").textContent="Backend connected";
+    $("ytMessage").textContent="Railway API is online. Google OAuth is the next connection step.";
+    $("ytDot").className="status-dot ready";
+    ytChecks[1][1]="Ready";
+    ytChecks[2][1]=caps.youtube?"Ready":"Required";
+    renderYouTubeSetup();
+    return true;
+  }catch(e){
+    $("backendState").textContent="Backend Offline";
+    $("backendUrl").textContent="Could not reach Railway API";
+    $("backendDot").className="status-dot offline";
+    $("ytState").textContent="Backend unavailable";
+    $("ytMessage").textContent="Check Railway deployment and try again.";
+    return false;
+  }
+}
+$("connectYouTube").onclick=async function(){
+  $("connectYouTube").disabled=true;
+  $("connectYouTube").textContent="Checking…";
+  await checkBackend();
+  $("connectYouTube").disabled=false;
+  $("connectYouTube").textContent="Check Connection";
+};
+checkBackend();
