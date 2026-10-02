@@ -387,7 +387,7 @@ async function burnShortCaptions(){
   var btn=document.getElementById("burnCaptions"),status=document.getElementById("captionStatus"),id=localStorage.getItem("activeProjectId"),narration=sessionStorage.getItem("aiNarration")||"";
   if(!id||!narration){status.textContent="Generate narration and Shorts first.";return}
   btn.disabled=true;btn.textContent="Adding Captions…";status.textContent="Rendering captions: Long + 3 Shorts… This can take a few minutes.";
-  try{var r=await fetch(API_BASE+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,narration:narration,longDuration:67})});var d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Caption render failed");
+  try{var r=await fetch(API_BASE+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,narration:narration})});var d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Caption render failed");
     var stampNow=Date.now();if(d.longVideoUrl){longRenderUrl=API_BASE+d.longVideoUrl+"?v="+stampNow}shortRenderUrls=d.shorts.map(function(x){return API_BASE+x+"?v="+stampNow});status.textContent="Long + Shorts captions ready ✓";btn.textContent="↻ Rebuild Captions";sessionStorage.setItem("captionsReady","1");selectPreview(activePreview);var rv=document.getElementById("renderedVideo");if(rv&&longRenderUrl){rv.src=longRenderUrl;rv.load()}
   }catch(e){status.textContent="Captions failed: "+e.message;btn.textContent="Try Captions Again"}finally{btn.disabled=false}
 }
