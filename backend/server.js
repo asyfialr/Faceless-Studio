@@ -386,6 +386,23 @@ app.post("/api/youtube/upload-short",async(req,res)=>{
   }catch(e){console.error("YouTube Short upload failed",e);res.status(500).json({error:e.message||"YouTube Short upload failed"})}
 });
 
+app.post("/api/youtube/publish-project",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),privacy=String(req.body?.privacyStatus||"private");
+    if(!projectId)return res.status(400).json({error:"projectId required"});
+    if(!["private","unlisted","public"].includes(privacy))return res.status(400).json({error:"Invalid privacy status"});
+    const metaPath=join(storageRoot,projectId,"project.json");const project=JSON.parse(await readFile(metaPath,"utf8")),yt=project.youtube||{};
+    const ids=[yt.longVideoId,...(yt.shorts||[]).map(x=>x?.videoId)].filter(Boolean);if(!ids.length)return res.status(400).json({error:"No uploaded YouTube videos found"});
+    const token=await youtubeAccessToken(),updated=[];
+    for(const id of ids){
+      const r=await fetch("https://www.googleapis.com/youtube/v3/videos?part=status",{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({id,status:{privacyStatus:privacy,selfDeclaredMadeForKids:false}})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error("YouTube status update "+r.status+" "+JSON.stringify(d).slice(0,500));updated.push(id);
+    }
+    project.youtube.privacyStatus=privacy;project.youtube.publishedAt=new Date().toISOString();if(project.youtube.shorts)project.youtube.shorts=project.youtube.shorts.map(x=>x?{...x,privacyStatus:privacy}:x);
+    await writeFile(metaPath,JSON.stringify(project,null,2));res.json({ok:true,privacyStatus:privacy,updated});
+  }catch(e){console.error("YouTube publish project failed",e);res.status(500).json({error:e.message||"YouTube publishing failed"})}
+});
+
 app.post("/api/ai/thumbnail",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
