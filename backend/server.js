@@ -476,6 +476,15 @@ app.post("/api/render/shorts",async(req,res)=>{
 
 
 app.use("/media",express.static(storageRoot,{maxAge:"1h"}));
+app.post("/api/projects/:id/checkpoint",async(req,res)=>{
+  const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
+  try{
+    const dir=join(storageRoot,id),path=join(dir,"project.json");await mkdir(dir,{recursive:true});let meta={id};try{meta=JSON.parse(await readFile(path,"utf8"))}catch(e){}
+    const body=req.body||{},allowed=["title","narration","visualPlan","metadata","scriptReady","productionReady","renderReady","shortsReady","captionTimingReady","captionsReady","reviewApproved","scheduleReady"];
+    for(const key of allowed)if(Object.prototype.hasOwnProperty.call(body,key))meta[key]=body[key];
+    meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));res.json({ok:true,project:meta});
+  }catch(e){res.status(500).json({error:"checkpoint_save_failed",message:e.message})}
+});
 app.get("/api/projects/:id",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");
   try{const raw=await readFile(join(storageRoot,id,"project.json"),"utf8");res.json(JSON.parse(raw))}
