@@ -12,6 +12,24 @@ const ideaTemplates=[
 let selectedTitle=sessionStorage.getItem("selectedTitle")||"Untitled AI Video", projectMade=false;
 const $=id=>document.getElementById(id), pipeline=$("pipeline"), progressBar=$("progressBar"), progressLabel=$("progressLabel"), statusText=$("statusText"), createBtn=$("createBtn");
 function drawStages(active=-1){pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("")}
+function syncDashboardFromProject(d){
+  d=d||{};
+  var states=[
+    !!(d.scriptReady||d.narration),
+    !!d.voiceStored,
+    !!(Array.isArray(d.visualPlan)&&d.visualPlan.length),
+    !!d.productionReady,
+    !!d.renderReady,
+    !!d.shortsReady,
+    !!d.captionTimingReady,
+    !!d.captionsReady,
+    !!d.metadata
+  ],done=states.filter(Boolean).length,pct=Math.round(done/states.length*100);
+  if(pipeline)pipeline.innerHTML=["Script","Voice","Visual plan","Visuals","Long video","3 Shorts","Caption timing","Captions","Metadata"].map(function(n,i){return '<div class="step '+(states[i]?"done":"")+'"><span class="dot"></span><span>'+n+(states[i]?" ✓":"")+'</span></div>'}).join("");
+  if(progressBar)progressBar.style.width=pct+"%";if(progressLabel)progressLabel.textContent=pct+"%";
+  var lc=$("longCount"),sc=$("shortCount"),qc=$("queueCount");if(lc)lc.textContent=d.renderReady?"1/1":"0/1";if(sc)sc.textContent=d.shortsReady?"3/3":"0/3";if(qc)qc.textContent="0";
+  if(statusText)statusText.textContent=d.youtube?.scheduled?.length>=4?"YouTube scheduled ✓":(d.captionsReady&&d.metadata?"Production ready for publishing.":done?done+"/9 production stages ready.":"Ready to create your next faceless video.");
+}
 function renderIdeas(){
   $("ideaList").innerHTML=ideas.map(function(x,i){
     return '<article class="idea"><div class="idea-top"><h3>'+x[0]+'</h3><span class="tag">'+x[2]+'</span></div><p>'+x[1]+' • English US • Long + Shorts</p><a class="secondary link-btn use-idea" href="#scriptStudio" data-i="'+i+'">Use Idea</a></article>';
@@ -500,7 +518,7 @@ async function restoreProjectCheckpoint(){
       var st=document.getElementById("metadataStatus");if(st)st.textContent="Metadata restored from project ✓";
     }
     ["scriptReady","renderReady","shortsReady","captionTimingReady","captionsReady"].forEach(function(k){if(d[k])sessionStorage.setItem(k,"1")});
-    return true;
+    syncDashboardFromProject(d);return true;
   }catch(e){return false}
 }
 restoreProjectCheckpoint();
