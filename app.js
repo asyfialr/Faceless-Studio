@@ -445,6 +445,18 @@ async function applyYouTubePrivacy(){
 }
 var youtubePrivacyButton=document.getElementById("applyYouTubePrivacy");if(youtubePrivacyButton)youtubePrivacyButton.onclick=function(e){e.preventDefault();applyYouTubePrivacy()};
 
+async function scheduleYouTubeProject(){
+  var btn=document.getElementById("scheduleYouTubeProject"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
+  var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,interval=Number(document.getElementById("shortInterval")?.value||1);
+  if(!id){status.textContent="Select an uploaded project first.";return}if(!date||!time){status.textContent="Set date/time in Scheduler first.";return}
+  var local=new Date(date+"T"+time+":00");if(!Number.isFinite(local.getTime())||local.getTime()<=Date.now()+60000){status.textContent="Choose a future schedule time.";return}
+  if(!confirm("Schedule the Long video and 3 Shorts on YouTube using this plan?"))return;
+  btn.disabled=true;btn.textContent="Scheduling…";status.textContent="Sending publishing schedule to YouTube…";
+  try{var r=await fetch(API_BASE+"/api/youtube/schedule-project",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,longPublishAt:local.toISOString(),shortIntervalDays:interval})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Scheduling failed");status.textContent=d.scheduled.length+" videos scheduled on YouTube ✓";btn.textContent="Scheduled ✓"}
+  catch(e){status.textContent="Scheduling failed: "+e.message;btn.textContent="Try Schedule Again"}finally{btn.disabled=false}
+}
+var youtubeScheduleButton=document.getElementById("scheduleYouTubeProject");if(youtubeScheduleButton)youtubeScheduleButton.onclick=function(e){e.preventDefault();scheduleYouTubeProject()};
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
