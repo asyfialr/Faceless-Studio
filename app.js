@@ -434,6 +434,17 @@ async function uploadYouTubeShorts(){
 }
 var youtubeShortsButton=document.getElementById("uploadYouTubeShorts");if(youtubeShortsButton)youtubeShortsButton.onclick=function(e){e.preventDefault();uploadYouTubeShorts()};
 
+async function applyYouTubePrivacy(){
+  var btn=document.getElementById("applyYouTubePrivacy"),status=document.getElementById("youtubePublishStatus"),id=localStorage.getItem("activeProjectId"),privacy=document.getElementById("youtubePrivacy")?.value||"private";
+  if(!id){status.textContent="Select an uploaded project first.";return}
+  var label=privacy.charAt(0).toUpperCase()+privacy.slice(1);
+  if(privacy==="public"&&!confirm("Publish the uploaded Long + Shorts publicly on YouTube now?"))return;
+  btn.disabled=true;btn.textContent="Applying…";status.textContent="Updating YouTube visibility to "+label+"…";
+  try{var r=await fetch(API_BASE+"/api/youtube/publish-project",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,privacyStatus:privacy})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Publishing failed");status.textContent=d.updated.length+" YouTube videos updated ✓ "+label;btn.textContent="Applied ✓"}
+  catch(e){status.textContent="Publishing failed: "+e.message;btn.textContent="Try Again"}finally{btn.disabled=false}
+}
+var youtubePrivacyButton=document.getElementById("applyYouTubePrivacy");if(youtubePrivacyButton)youtubePrivacyButton.onclick=function(e){e.preventDefault();applyYouTubePrivacy()};
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
