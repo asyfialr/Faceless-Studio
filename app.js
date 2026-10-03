@@ -457,6 +457,24 @@ async function scheduleYouTubeProject(){
 }
 var youtubeScheduleButton=document.getElementById("scheduleYouTubeProject");if(youtubeScheduleButton)youtubeScheduleButton.onclick=function(e){e.preventDefault();scheduleYouTubeProject()};
 
+async function autoPublishYouTube(){
+  var btn=document.getElementById("autoPublishYouTube"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
+  var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,interval=Number(document.getElementById("shortInterval")?.value||1);
+  var title=document.getElementById("youtubeTitle")?.value||sessionStorage.getItem("selectedTitle")||"Faceless Studio Video",description=document.getElementById("youtubeDescription")?.value||"";
+  if(!id){status.textContent="Select a rendered project first.";return}if(!date||!time){status.textContent="Set a future date/time in Scheduler first.";return}
+  var local=new Date(date+"T"+time+":00");if(!Number.isFinite(local.getTime())||local.getTime()<=Date.now()+60000){status.textContent="Choose a future schedule time.";return}
+  if(!confirm("Auto Publish will upload any missing Long/Shorts as Private, then schedule all 4 on YouTube. Continue?"))return;
+  btn.disabled=true;btn.textContent="Auto Publishing…";
+  try{
+    status.textContent="Checking existing YouTube uploads…";var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id)),project=pr.ok?await pr.json():{},yt=project.youtube||{};
+    if(!yt.longVideoId){status.textContent="Uploading missing Long video…";var lr=await fetch(API_BASE+"/api/youtube/upload-long",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,title:title,description:description})}),ld=await lr.json();if(!lr.ok)throw new Error(ld.error||"Long upload failed")}
+    for(var i=1;i<=3;i++){var current=(yt.shorts||[])[i-1];if(!current?.videoId){status.textContent="Uploading missing Short "+i+"/3…";var sr=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:title+" — Short "+i,description:description})}),sd=await sr.json();if(!sr.ok)throw new Error("Short "+i+": "+(sd.error||"upload failed"))}}
+    status.textContent="Uploads ready. Applying YouTube schedule…";var rr=await fetch(API_BASE+"/api/youtube/schedule-project",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,longPublishAt:local.toISOString(),shortIntervalDays:interval})}),rd=await rr.json();if(!rr.ok)throw new Error(rd.error||"Scheduling failed");
+    status.textContent=rd.scheduled.length+" videos Auto Published ✓ YouTube schedule active";btn.textContent="Auto Publish Ready ✓";
+  }catch(e){status.textContent="Auto Publish stopped: "+e.message;btn.textContent="Retry Auto Publish"}finally{btn.disabled=false}
+}
+var autoPublishButton=document.getElementById("autoPublishYouTube");if(autoPublishButton)autoPublishButton.onclick=function(e){e.preventDefault();autoPublishYouTube()};
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
