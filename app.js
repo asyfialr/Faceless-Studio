@@ -478,6 +478,26 @@ async function autoPublishYouTube(){
 var autoPublishButton=document.getElementById("autoPublishYouTube");if(autoPublishButton)autoPublishButton.onclick=function(e){e.preventDefault();autoPublishYouTube()};
 
 function autopilotWait(test,timeout,label){return new Promise(function(resolve,reject){var started=Date.now(),timer=setInterval(function(){try{if(test()){clearInterval(timer);resolve()}else if(Date.now()-started>timeout){clearInterval(timer);reject(new Error(label+" timed out"))}}catch(e){clearInterval(timer);reject(e)}},500)})}
+async function saveProjectCheckpoint(extra){
+  var id=localStorage.getItem("activeProjectId");if(!id)return false;
+  var payload=Object.assign({title:sessionStorage.getItem("selectedTitle")||selectedTitle||"",narration:sessionStorage.getItem("aiNarration")||"",visualPlan:(function(){try{return JSON.parse(sessionStorage.getItem("visualPlan")||"[]")}catch(e){return[]}})(),metadata:(function(){try{return JSON.parse(sessionStorage.getItem("youtubeMetadataDraft")||"null")}catch(e){return null}})(),scriptReady:sessionStorage.getItem("scriptReady")==="1",renderReady:sessionStorage.getItem("renderReady")==="1",shortsReady:sessionStorage.getItem("shortsReady")==="1",captionTimingReady:sessionStorage.getItem("captionTimingReady")==="1",captionsReady:sessionStorage.getItem("captionsReady")==="1"},extra||{});
+  try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id)+"/checkpoint",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});return r.ok}catch(e){return false}
+}
+async function restoreProjectCheckpoint(){
+  var id=localStorage.getItem("activeProjectId");if(!id)return false;
+  try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return false;var d=await r.json();
+    if(d.title){selectedTitle=d.title;sessionStorage.setItem("selectedTitle",d.title)}
+    if(d.narration)sessionStorage.setItem("aiNarration",d.narration);
+    if(Array.isArray(d.visualPlan)&&d.visualPlan.length)sessionStorage.setItem("visualPlan",JSON.stringify(d.visualPlan));
+    if(d.metadata){sessionStorage.setItem("youtubeMetadataDraft",JSON.stringify(d.metadata));sessionStorage.setItem("youtubeMetadataReady","1");var m=d.metadata;
+      var el=document.getElementById("metadataLongTitle");if(el)el.value=m.longTitle||"";el=document.getElementById("metadataDescription");if(el)el.value=m.description||"";el=document.getElementById("metadataHashtags");if(el)el.value=m.hashtags||"";for(var i=1;i<=3;i++){el=document.getElementById("metadataShort"+i);if(el)el.value=m.shortsTitles?.[i-1]||""}
+      var st=document.getElementById("metadataStatus");if(st)st.textContent="Metadata restored from project ✓";
+    }
+    ["scriptReady","renderReady","shortsReady","captionTimingReady","captionsReady"].forEach(function(k){if(d[k])sessionStorage.setItem(k,"1")});
+    return true;
+  }catch(e){return false}
+}
+restoreProjectCheckpoint();
 async function restorePersistedVoice(){
   var id=localStorage.getItem("activeProjectId"),player=document.getElementById("voicePlayer");if(!id||!player)return false;
   try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return false;var d=await r.json(),url=d.voiceUrl||(d.voiceStored?"/media/"+encodeURIComponent(id)+"/voice.wav":"");if(!url)return false;
@@ -502,7 +522,7 @@ async function runFullAutopilot(){
     if(!sessionStorage.getItem("captionTimingReady")){status.textContent="7/9 • Analyzing precision captions…";await analyzeCaptionTiming()}else status.textContent="7/9 • Caption timing checkpoint reused ✓";if(!sessionStorage.getItem("captionTimingReady"))throw new Error("Caption timing failed.");
     if(!sessionStorage.getItem("captionsReady")){status.textContent="8/9 • Burning captions…";await burnShortCaptions()}else status.textContent="8/9 • Captions checkpoint reused ✓";if(!sessionStorage.getItem("captionsReady"))throw new Error("Caption render failed.");
     status.textContent="9/9 • Generating YouTube metadata…";await generateMetadata();var mt=document.getElementById("metadataLongTitle")?.value;if(!mt)throw new Error("Metadata generation failed.");useMetadataDraft();
-    status.textContent="Full production ready ✓ Review metadata/video, then Auto Publish with your schedule.";btn.textContent="✓ Production Ready";location.hash="youtubeConnect";
+    await saveProjectCheckpoint();status.textContent="Full production ready ✓ Review metadata/video, then Auto Publish with your schedule.";btn.textContent="✓ Production Ready";location.hash="youtubeConnect";
   }catch(e){status.textContent="Autopilot stopped: "+e.message;btn.textContent="↻ Resume Autopilot"}finally{btn.disabled=false}
 }
 var fullAutopilotButton=document.getElementById("runFullAutopilot");if(fullAutopilotButton)fullAutopilotButton.onclick=function(e){e.preventDefault();runFullAutopilot()};
@@ -521,7 +541,7 @@ function useMetadataDraft(){
   if(!title){if(status)status.textContent="Generate or enter a Long title first.";return false}
   var fullDesc=(desc+(tags?"\n\n"+tags:"")).trim(),shorts=[1,2,3].map(function(i){return (document.getElementById("metadataShort"+i)?.value||"").trim()});
   var ytTitle=document.getElementById("youtubeTitle"),ytDesc=document.getElementById("youtubeDescription");if(ytTitle)ytTitle.value=title;if(ytDesc)ytDesc.value=fullDesc;
-  sessionStorage.setItem("youtubeShortTitles",JSON.stringify(shorts));sessionStorage.setItem("youtubeMetadataReady","1");sessionStorage.setItem("youtubeMetadataDraft",JSON.stringify({longTitle:title,description:fullDesc,shortsTitles:shorts}));
+  var metadataDraft={longTitle:title,description:fullDesc,hashtags:tags,shortsTitles:shorts};sessionStorage.setItem("youtubeShortTitles",JSON.stringify(shorts));sessionStorage.setItem("youtubeMetadataReady","1");sessionStorage.setItem("youtubeMetadataDraft",JSON.stringify(metadataDraft));saveProjectCheckpoint({metadata:metadataDraft});
   if(status)status.textContent="Metadata applied ✓ Long + 3 Shorts are ready for the next upload.";
   if(btn){btn.textContent="✓ Metadata Applied";btn.classList.add("active")}
   return false;
