@@ -412,6 +412,17 @@ async function refreshYouTubeStatus(){
 refreshYouTubeStatus();
 window.addEventListener("hashchange",function(){if(location.hash==="#youtubeConnect")refreshYouTubeStatus()});
 
+async function uploadYouTubeLong(){
+  var btn=document.getElementById("uploadYouTubeLong"),status=document.getElementById("youtubeUploadStatus"),link=document.getElementById("youtubeUploadedLink"),id=localStorage.getItem("activeProjectId");
+  if(!id){status.textContent="Render/select a project first.";return}
+  var title=document.getElementById("youtubeTitle")?.value||sessionStorage.getItem("selectedTitle")||"Faceless Studio Video",description=document.getElementById("youtubeDescription")?.value||"";
+  btn.disabled=true;btn.textContent="Uploading…";status.textContent="Uploading Long video to YouTube as Private… Keep this page open.";
+  try{var r=await fetch(API_BASE+"/api/youtube/upload-long",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,title:title,description:description})}),d=await r.json();if(!r.ok)throw new Error(d.error||"YouTube upload failed");
+    status.textContent="YouTube upload complete ✓ Video ID: "+d.videoId+" • Private";link.href=d.url;link.style.display="inline-block";link.textContent="Open uploaded video ↗";btn.textContent="Uploaded ✓";
+  }catch(e){status.textContent="Upload failed: "+e.message;btn.textContent="Try Upload Again"}finally{btn.disabled=false}
+}
+var youtubeUploadButton=document.getElementById("uploadYouTubeLong");if(youtubeUploadButton)youtubeUploadButton.onclick=function(e){e.preventDefault();uploadYouTubeLong()};
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
