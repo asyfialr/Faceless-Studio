@@ -475,6 +475,29 @@ async function autoPublishYouTube(){
 }
 var autoPublishButton=document.getElementById("autoPublishYouTube");if(autoPublishButton)autoPublishButton.onclick=function(e){e.preventDefault();autoPublishYouTube()};
 
+function autopilotWait(test,timeout,label){return new Promise(function(resolve,reject){var started=Date.now(),timer=setInterval(function(){try{if(test()){clearInterval(timer);resolve()}else if(Date.now()-started>timeout){clearInterval(timer);reject(new Error(label+" timed out"))}}catch(e){clearInterval(timer);reject(e)}},500)})}
+async function runFullAutopilot(){
+  var btn=document.getElementById("runFullAutopilot"),status=document.getElementById("autopilotStatus");
+  if(!selectedTitle||selectedTitle==="Untitled AI Video"){status.textContent="Choose an idea in Ideas first.";location.hash="ideas";return}
+  if(!confirm("Run the full production pipeline for: "+selectedTitle+"? Heavy render stages will run one at a time."))return;
+  btn.disabled=true;btn.textContent="Autopilot Running…";
+  try{
+    status.textContent="1/9 • Writing AI script…";await buildScriptDraft();if(!sessionStorage.getItem("aiNarration"))throw new Error("Script was not generated.");
+    sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
+    status.textContent="2/9 • Generating voice…";await generateServerVoice();var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio"))throw new Error("Voice generation failed.");
+    status.textContent="3/9 • Planning visuals…";await generateVisualPlan();if(!document.querySelectorAll(".generate-scene-media").length)throw new Error("Visual plan failed.");
+    status.textContent="4/9 • Generating scene visuals…";await generateAllVisuals();var mediaStatus=Array.from(document.querySelectorAll(".scene-media-status"));if(!mediaStatus.length||mediaStatus.some(function(x){return !(x.textContent||"").includes("ready ✓")}))throw new Error("One or more visuals could not be generated. Check Cloudflare image quota, then retry.");
+    buildSceneMotion();
+    status.textContent="5/9 • Rendering Long video…";await renderMp4();if(!sessionStorage.getItem("renderReady"))throw new Error("Long render failed.");
+    status.textContent="6/9 • Rendering 3 Shorts…";await generateShorts();if(!sessionStorage.getItem("shortsReady"))throw new Error("Shorts render failed.");
+    status.textContent="7/9 • Analyzing precision captions…";await analyzeCaptionTiming();if(!sessionStorage.getItem("captionTimingReady"))throw new Error("Caption timing failed.");
+    status.textContent="8/9 • Burning captions…";await burnShortCaptions();if(!sessionStorage.getItem("captionsReady"))throw new Error("Caption render failed.");
+    status.textContent="9/9 • Generating YouTube metadata…";await generateMetadata();var mt=document.getElementById("metadataLongTitle")?.value;if(!mt)throw new Error("Metadata generation failed.");useMetadataDraft();
+    status.textContent="Full production ready ✓ Review metadata/video, then Auto Publish with your schedule.";btn.textContent="✓ Production Ready";location.hash="youtubeConnect";
+  }catch(e){status.textContent="Autopilot stopped: "+e.message;btn.textContent="↻ Resume Autopilot"}finally{btn.disabled=false}
+}
+var fullAutopilotButton=document.getElementById("runFullAutopilot");if(fullAutopilotButton)fullAutopilotButton.onclick=function(e){e.preventDefault();runFullAutopilot()};
+
 async function generateMetadata(){
   var btn=document.getElementById("generateMetadata"),status=document.getElementById("metadataStatus"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"",narration=sessionStorage.getItem("aiNarration")||"";
   if(!title){status.textContent="Choose/generate a topic first.";return}btn.disabled=true;btn.textContent="Generating…";status.textContent="Gemini is drafting YouTube metadata…";
