@@ -423,6 +423,17 @@ async function uploadYouTubeLong(){
 }
 var youtubeUploadButton=document.getElementById("uploadYouTubeLong");if(youtubeUploadButton)youtubeUploadButton.onclick=function(e){e.preventDefault();uploadYouTubeLong()};
 
+async function uploadYouTubeShorts(){
+  var btn=document.getElementById("uploadYouTubeShorts"),status=document.getElementById("youtubeUploadStatus"),id=localStorage.getItem("activeProjectId");
+  if(!id){status.textContent="Render/select a project first.";return}
+  var title=document.getElementById("youtubeTitle")?.value||sessionStorage.getItem("selectedTitle")||"Faceless Studio",description=document.getElementById("youtubeDescription")?.value||"";
+  btn.disabled=true;var done=[];
+  try{for(var i=1;i<=3;i++){btn.textContent="Uploading Short "+i+"/3…";status.textContent="Uploading Short "+i+" of 3 to YouTube as Private…";var r=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:title+" — Short "+i,description:description})}),d=await r.json();if(!r.ok)throw new Error("Short "+i+": "+(d.error||"upload failed"));done.push(d)}
+    status.textContent="3 Shorts uploaded to YouTube ✓ All Private";btn.textContent="3 Shorts Uploaded ✓";
+  }catch(e){status.textContent="Shorts upload stopped: "+e.message+" • "+done.length+"/3 completed";btn.textContent="Try Upload Shorts Again"}finally{btn.disabled=false}
+}
+var youtubeShortsButton=document.getElementById("uploadYouTubeShorts");if(youtubeShortsButton)youtubeShortsButton.onclick=function(e){e.preventDefault();uploadYouTubeShorts()};
+
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
   if(!id||!title){status.textContent="Choose a project/topic first.";return}
