@@ -369,6 +369,23 @@ app.post("/api/youtube/upload-long",async(req,res)=>{
   }catch(e){console.error("YouTube long upload failed",e);res.status(500).json({error:e.message||"YouTube upload failed"})}
 });
 
+app.post("/api/youtube/upload-short",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),index=Math.max(1,Math.min(3,Number(req.body?.index||1))),baseTitle=String(req.body?.title||"Faceless Studio Short").trim();
+    if(!projectId)return res.status(400).json({error:"projectId required"});
+    const projectDir=join(storageRoot,projectId),captioned=join(projectDir,"short-"+index+"-captioned.mp4"),plain=join(projectDir,"short-"+index+".mp4");let filePath=captioned;
+    try{await stat(filePath)}catch{filePath=plain}const info=await stat(filePath),token=await youtubeAccessToken();
+    const title=(baseTitle+" #Shorts").slice(0,100),description=String(req.body?.description||"").slice(0,4900)+"\n\n#Shorts";
+    const metadata={snippet:{title,description,categoryId:"28"},status:{privacyStatus:"private",selfDeclaredMadeForKids:false}};
+    const init=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status&notifySubscribers=false",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Length":String(info.size),"X-Upload-Content-Type":"video/mp4"},body:JSON.stringify(metadata)});
+    if(!init.ok)throw new Error("YouTube Short init "+init.status+" "+(await init.text()).slice(0,500));const uploadUrl=init.headers.get("location");if(!uploadUrl)throw new Error("YouTube did not return an upload URL");
+    const data=await readFile(filePath);const put=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"video/mp4","Content-Length":String(data.length)},body:data});const result=await put.json().catch(()=>({}));
+    if(!put.ok)throw new Error("YouTube Short upload "+put.status+" "+JSON.stringify(result).slice(0,500));
+    const metaPath=join(projectDir,"project.json");let project={id:projectId};try{project=JSON.parse(await readFile(metaPath,"utf8"))}catch{}project.youtube=project.youtube||{};project.youtube.shorts=project.youtube.shorts||[];project.youtube.shorts[index-1]={videoId:result.id,privacyStatus:"private",uploadedAt:new Date().toISOString()};await writeFile(metaPath,JSON.stringify(project,null,2));
+    res.json({ok:true,index,videoId:result.id,url:"https://www.youtube.com/watch?v="+result.id,privacyStatus:"private"});
+  }catch(e){console.error("YouTube Short upload failed",e);res.status(500).json({error:e.message||"YouTube Short upload failed"})}
+});
+
 app.post("/api/ai/thumbnail",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
