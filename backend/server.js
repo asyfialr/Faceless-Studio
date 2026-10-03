@@ -365,8 +365,9 @@ app.post("/api/youtube/upload-long",async(req,res)=>{
     if(!init.ok)throw new Error("YouTube upload init "+init.status+" "+(await init.text()).slice(0,500));const uploadUrl=init.headers.get("location");if(!uploadUrl)throw new Error("YouTube did not return an upload URL");
     const data=await readFile(filePath);const put=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"video/mp4","Content-Length":String(data.length)},body:data});const result=await put.json().catch(()=>({}));
     if(!put.ok)throw new Error("YouTube upload "+put.status+" "+JSON.stringify(result).slice(0,500));
+    let thumbnailApplied=false;try{const thumb=await readFile(join(projectDir,"thumbnail.jpg"));const tr=await fetch("https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId="+encodeURIComponent(result.id)+"&uploadType=media",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"image/jpeg","Content-Length":String(thumb.length)},body:thumb});thumbnailApplied=tr.ok;if(!tr.ok)console.warn("YouTube thumbnail set failed",tr.status,(await tr.text()).slice(0,300))}catch(e){console.warn("YouTube thumbnail unavailable",e.message)}
     const metaPath=join(projectDir,"project.json");let project={id:projectId};try{project=JSON.parse(await readFile(metaPath,"utf8"))}catch{}project.youtube={...(project.youtube||{}),longVideoId:result.id,privacyStatus:"private",uploadedAt:new Date().toISOString()};await writeFile(metaPath,JSON.stringify(project,null,2));
-    res.json({ok:true,videoId:result.id,url:"https://www.youtube.com/watch?v="+result.id,privacyStatus:"private"});
+    res.json({ok:true,videoId:result.id,url:"https://www.youtube.com/watch?v="+result.id,privacyStatus:"private",thumbnailApplied});
   }catch(e){console.error("YouTube long upload failed",e);res.status(500).json({error:e.message||"YouTube upload failed"})}
 });
 
@@ -474,7 +475,9 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
       const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+account+"/ai/run/@cf/black-forest-labs/flux-1-schnell",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt})});
       if(!r.ok)throw new Error("Cloudflare "+r.status);
       const ct=r.headers.get("content-type")||"";let buf;if(ct.includes("application/json")){const d=await r.json(),b64=d?.result?.image||d?.result;if(typeof b64!=="string")throw new Error("image missing");buf=Buffer.from(b64.replace(/^data:image\/\w+;base64,/,""),"base64")}else buf=Buffer.from(await r.arrayBuffer());
-      await sharp(buf).resize(1280,720,{fit:"cover"}).jpeg({quality:90}).toFile(out);provider="cloudflare";
+      const headline=title.split(/\s+/).filter(Boolean).slice(0,5).join(" ").toUpperCase(),esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c])),words=headline.split(/\s+/),lines=[];while(words.length)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
+      const overlay=Buffer.from('<svg width="1280" height="720" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="shade"><stop stop-color="#000" stop-opacity=".78"/><stop offset=".72" stop-color="#000" stop-opacity=".08"/></linearGradient></defs><rect width="820" height="720" fill="url(#shade)"/><text x="64" y="410" fill="white" font-family="Arial,sans-serif" font-weight="900" font-size="74" stroke="#000" stroke-width="3" paint-order="stroke">'+lines.slice(0,2).map((x,i)=>'<tspan x="64" dy="'+(i?88:0)+'">'+esc(x)+'</tspan>').join("")+'</text></svg>');
+      await sharp(buf).resize(1280,720,{fit:"cover"}).composite([{input:overlay}]).jpeg({quality:90}).toFile(out);provider="cloudflare";
     }catch(e){console.warn("Thumbnail AI fallback:",e.message)}
     if(provider==="local"){
       const words=title.split(/\s+/).filter(Boolean).slice(0,7),lines=[];while(words.length)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
