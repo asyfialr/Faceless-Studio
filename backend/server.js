@@ -190,7 +190,7 @@ app.post("/api/render/mp4",async(req,res)=>{
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
     await writeFile(join(projectDir,"long.mp4"),video);
     await writeFile(join(projectDir,"voice.wav"),Buffer.from(audio64,"base64"));
-    const meta={id:projectId,title:String(req.body?.title||"Untitled project"),updatedAt:new Date().toISOString(),longVideoUrl:"/media/"+projectId+"/long.mp4",voiceStored:true};
+    const meta={id:projectId,title:String(req.body?.title||"Untitled project"),updatedAt:new Date().toISOString(),longVideoUrl:"/media/"+projectId+"/long.mp4",voiceUrl:"/media/"+projectId+"/voice.wav",voiceStored:true};
     await writeFile(join(projectDir,"project.json"),JSON.stringify(meta,null,2));
     res.setHeader("X-Project-Id",projectId);res.setHeader("X-Video-Url",meta.longVideoUrl);
     res.setHeader("Content-Type","video/mp4");res.setHeader("Content-Length",video.length);res.send(video);
