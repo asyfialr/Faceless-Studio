@@ -478,6 +478,13 @@ async function autoPublishYouTube(){
 var autoPublishButton=document.getElementById("autoPublishYouTube");if(autoPublishButton)autoPublishButton.onclick=function(e){e.preventDefault();autoPublishYouTube()};
 
 function autopilotWait(test,timeout,label){return new Promise(function(resolve,reject){var started=Date.now(),timer=setInterval(function(){try{if(test()){clearInterval(timer);resolve()}else if(Date.now()-started>timeout){clearInterval(timer);reject(new Error(label+" timed out"))}}catch(e){clearInterval(timer);reject(e)}},500)})}
+async function restorePersistedVoice(){
+  var id=localStorage.getItem("activeProjectId"),player=document.getElementById("voicePlayer");if(!id||!player)return false;
+  try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return false;var d=await r.json(),url=d.voiceUrl||(d.voiceStored?"/media/"+encodeURIComponent(id)+"/voice.wav":"");if(!url)return false;
+    var a=await fetch(API_BASE+url,{cache:"no-store"});if(!a.ok)return false;var blob=await a.blob(),reader=new FileReader();var dataUrl=await new Promise(function(resolve,reject){reader.onload=function(){resolve(reader.result)};reader.onerror=reject;reader.readAsDataURL(blob)});
+    player.src=dataUrl;player.style.display="block";player.load();return true;
+  }catch(e){return false}
+}
 async function runFullAutopilot(){
   var btn=document.getElementById("runFullAutopilot"),status=document.getElementById("autopilotStatus");
   if(!selectedTitle||selectedTitle==="Untitled AI Video"){status.textContent="Choose an idea in Ideas first.";location.hash="ideas";return}
@@ -486,7 +493,7 @@ async function runFullAutopilot(){
   try{
     if(!sessionStorage.getItem("aiNarration")){status.textContent="1/9 • Writing AI script…";await buildScriptDraft()}else status.textContent="1/9 • Script checkpoint reused ✓";if(!sessionStorage.getItem("aiNarration"))throw new Error("Script was not generated.");
     sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
-    var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio")){status.textContent="2/9 • Generating voice…";await generateServerVoice()}else status.textContent="2/9 • Voice checkpoint reused ✓";if(!voice?.src?.startsWith("data:audio")){var vs=(document.getElementById("productionStatus")?.textContent||"").trim();throw new Error(vs||"Voice generation failed.")}
+    var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio")){status.textContent="2/9 • Restoring voice checkpoint…";var restored=await restorePersistedVoice();if(!restored){status.textContent="2/9 • Generating voice…";await generateServerVoice()}else status.textContent="2/9 • Persisted voice restored ✓"}else status.textContent="2/9 • Voice checkpoint reused ✓";if(!voice?.src?.startsWith("data:audio")){var vs=(document.getElementById("productionStatus")?.textContent||"").trim();throw new Error(vs||"Voice generation failed.")}
     if(!document.querySelectorAll(".generate-scene-media").length){status.textContent="3/9 • Planning visuals…";await generateVisualPlan()}else status.textContent="3/9 • Visual plan checkpoint reused ✓";if(!document.querySelectorAll(".generate-scene-media").length){var vp=(document.getElementById("visualPlanOutput")?.textContent||"").trim();throw new Error(vp&&vp!=="No visual plan yet."?vp:"Visual plan failed. Check Gemini response.")}
     status.textContent="4/9 • Generating scene visuals…";await generateAllVisuals();var mediaStatus=Array.from(document.querySelectorAll(".scene-media-status"));if(!mediaStatus.length||mediaStatus.some(function(x){return !(x.textContent||"").includes("ready ✓")}))throw new Error("One or more visuals could not be generated. Check Cloudflare image quota, then retry.");
     buildSceneMotion();
