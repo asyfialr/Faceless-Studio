@@ -4,7 +4,7 @@ import ffmpegPath from "ffmpeg-static";
 import sharp from "sharp";
 import {createCanvas,GlobalFonts} from "@napi-rs/canvas";
 import {spawn} from "node:child_process";
-import {mkdtemp,writeFile,readFile,rm,mkdir} from "node:fs/promises";
+import {mkdtemp,writeFile,readFile,rm,mkdir,stat} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -342,6 +342,31 @@ app.get("/api/youtube/callback",async(req,res)=>{
     await writeFile(youtubeTokenPath,JSON.stringify({...d,obtained_at:Date.now()},null,2));await rm(join(storageRoot,"youtube-oauth-state.json"),{force:true}).catch(()=>{});
     res.redirect("https://asyfialr.github.io/Faceless-Studio/#youtube");
   }catch(e){console.error("YouTube OAuth callback failed",e);res.status(500).send("YouTube connection failed: "+e.message)}
+});
+
+async function youtubeAccessToken(){
+  const saved=await readYoutubeToken();if(!saved)throw new Error("YouTube is not connected");
+  if(saved.access_token&&saved.obtained_at&&Date.now()<saved.obtained_at+(Number(saved.expires_in||3600)-120)*1000)return saved.access_token;
+  if(!saved.refresh_token)throw new Error("YouTube refresh token is missing. Reconnect YouTube.");
+  const body=new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,refresh_token:saved.refresh_token,grant_type:"refresh_token"});
+  const r=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});const d=await r.json();
+  if(!r.ok)throw new Error(d.error_description||d.error||"YouTube token refresh failed");
+  const next={...saved,...d,refresh_token:saved.refresh_token,obtained_at:Date.now()};await writeFile(youtubeTokenPath,JSON.stringify(next,null,2));return next.access_token;
+}
+app.post("/api/youtube/upload-long",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"Faceless Studio Video").trim().slice(0,100),description=String(req.body?.description||"").slice(0,5000);
+    if(!projectId)return res.status(400).json({error:"projectId required"});
+    const projectDir=join(storageRoot,projectId),captioned=join(projectDir,"long-captioned.mp4"),plain=join(projectDir,"long.mp4");let filePath=captioned;
+    try{await stat(filePath)}catch{filePath=plain}const info=await stat(filePath),token=await youtubeAccessToken();
+    const metadata={snippet:{title,description,categoryId:"28"},status:{privacyStatus:"private",selfDeclaredMadeForKids:false}};
+    const init=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status&notifySubscribers=false",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Length":String(info.size),"X-Upload-Content-Type":"video/mp4"},body:JSON.stringify(metadata)});
+    if(!init.ok)throw new Error("YouTube upload init "+init.status+" "+(await init.text()).slice(0,500));const uploadUrl=init.headers.get("location");if(!uploadUrl)throw new Error("YouTube did not return an upload URL");
+    const data=await readFile(filePath);const put=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"video/mp4","Content-Length":String(data.length)},body:data});const result=await put.json().catch(()=>({}));
+    if(!put.ok)throw new Error("YouTube upload "+put.status+" "+JSON.stringify(result).slice(0,500));
+    const metaPath=join(projectDir,"project.json");let project={id:projectId};try{project=JSON.parse(await readFile(metaPath,"utf8"))}catch{}project.youtube={...(project.youtube||{}),longVideoId:result.id,privacyStatus:"private",uploadedAt:new Date().toISOString()};await writeFile(metaPath,JSON.stringify(project,null,2));
+    res.json({ok:true,videoId:result.id,url:"https://www.youtube.com/watch?v="+result.id,privacyStatus:"private"});
+  }catch(e){console.error("YouTube long upload failed",e);res.status(500).json({error:e.message||"YouTube upload failed"})}
 });
 
 app.post("/api/ai/thumbnail",async(req,res)=>{
