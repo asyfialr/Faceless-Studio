@@ -467,10 +467,10 @@ function syncYouTubeScheduleControls(){
 syncYouTubeScheduleControls();
 async function autoPublishYouTube(){
   var btn=document.getElementById("autoPublishYouTube"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
-  var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,interval=Number(document.getElementById("shortInterval")?.value||1);
+  var date=document.getElementById("youtubeScheduleDate")?.value||document.getElementById("scheduleDate")?.value,time=document.getElementById("youtubeScheduleTime")?.value||document.getElementById("scheduleTime")?.value,timeZone=document.getElementById("youtubeScheduleTimezone")?.value||document.getElementById("scheduleTimezone")?.value||"America/New_York",interval=Number(document.getElementById("youtubeShortInterval")?.value||document.getElementById("shortInterval")?.value||1);
   var title=document.getElementById("youtubeTitle")?.value||sessionStorage.getItem("selectedTitle")||"Faceless Studio Video",description=document.getElementById("youtubeDescription")?.value||"";
   if(!id){status.textContent="Select a rendered project first.";return}if(!date||!time){status.textContent="Set a future date/time in Scheduler first.";return}
-  var local=new Date(date+"T"+time+":00");if(!Number.isFinite(local.getTime())||local.getTime()<=Date.now()+60000){status.textContent="Choose a future schedule time.";return}
+  if(!date||!time){status.textContent="Set a schedule date and time first.";return}
   if(!confirm("Auto Publish will upload any missing Long/Shorts as Private, then schedule all 4 on YouTube. Continue?"))return;
   btn.disabled=true;btn.textContent="Auto Publishing…";
   try{
