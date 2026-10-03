@@ -342,7 +342,7 @@ async function prepareSceneMedia(index,button){
     var r=await fetch(API_BASE+"/api/ai/image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:scene.visualPrompt})});
     var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error||"Image generation failed");
     preview.hidden=false;preview.innerHTML='<img src="data:'+(data.mimeType||"image/jpeg")+';base64,'+data.image+'" alt="Generated visual for scene '+scene.scene+'" style="width:100%;border-radius:14px;margin-top:10px">';
-    status.textContent="AI visual ready ✓";button.textContent="↻ Regenerate Visual";
+    status.textContent="AI visual ready ✓"+(data.provider?" • "+data.provider:"");button.textContent="↻ Regenerate Visual";
     var queue=[];try{queue=JSON.parse(sessionStorage.getItem("mediaQueue")||"[]")}catch(e){}
     queue=queue.filter(function(x){return x.scene!==scene.scene});queue.push({scene:scene.scene,prompt:scene.visualPrompt,status:"generated"});
     sessionStorage.setItem("mediaQueue",JSON.stringify(queue));
