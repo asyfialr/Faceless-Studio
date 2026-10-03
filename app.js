@@ -451,7 +451,7 @@ async function scheduleYouTubeProject(){
   var btn=document.getElementById("scheduleYouTubeProject"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
   var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,timeZone=document.getElementById("scheduleTimezone")?.value||"America/New_York",interval=Number(document.getElementById("shortInterval")?.value||1);
   if(!id){status.textContent="Select an uploaded project first.";return}if(!date||!time){status.textContent="Set date/time in Scheduler first.";return}
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{2}:\\d{2}$/.test(time)){status.textContent="Choose a valid schedule date/time.";return}
+  if(!date||!time){status.textContent="Set a schedule date and time first.";return}
   if(!confirm("Schedule the Long video and 3 Shorts on YouTube using this plan?"))return;
   btn.disabled=true;btn.textContent="Scheduling…";status.textContent="Sending publishing schedule to YouTube…";
   try{var r=await fetch(API_BASE+"/api/youtube/schedule-project",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,scheduleDate:date,scheduleTime:time,timeZone:timeZone,shortIntervalDays:interval})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Scheduling failed");status.textContent=d.scheduled.length+" videos scheduled on YouTube ✓";btn.textContent="Scheduled ✓"}
