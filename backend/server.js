@@ -323,7 +323,7 @@ const youtubeConfigured=()=>Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GO
 const readYoutubeToken=async()=>{try{return JSON.parse(await readFile(youtubeTokenPath,"utf8"))}catch{return null}};
 
 app.get("/api/youtube/status",async(req,res)=>{
-  const token=await readYoutubeToken();res.json({configured:youtubeConfigured(),connected:Boolean(token?.refresh_token||token?.access_token)});
+  const token=await readYoutubeToken(),scopes=String(token?.scope||"").split(/\\s+/).filter(Boolean),editScope=scopes.includes("https://www.googleapis.com/auth/youtube.force-ssl")||scopes.includes("https://www.googleapis.com/auth/youtube");res.json({configured:youtubeConfigured(),connected:Boolean(token?.refresh_token||token?.access_token),editScope,scopes});
 });
 app.get("/api/youtube/connect",(req,res)=>{
   if(!youtubeConfigured())return res.status(503).send("YouTube OAuth is not configured.");
@@ -339,7 +339,7 @@ app.get("/api/youtube/callback",async(req,res)=>{
     const saved=JSON.parse(await readFile(join(storageRoot,"youtube-oauth-state.json"),"utf8"));if(saved.state!==state||Date.now()-saved.createdAt>10*60*1000)throw new Error("Invalid or expired OAuth state");
     const body=new URLSearchParams({code,client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,redirect_uri:youtubeRedirect(),grant_type:"authorization_code"});
     const r=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.error||"Token exchange failed");
-    await writeFile(youtubeTokenPath,JSON.stringify({...d,obtained_at:Date.now()},null,2));await rm(join(storageRoot,"youtube-oauth-state.json"),{force:true}).catch(()=>{});
+    const previous=await readYoutubeToken();const merged={...previous,...d,refresh_token:d.refresh_token||previous?.refresh_token,obtained_at:Date.now()};await writeFile(youtubeTokenPath,JSON.stringify(merged,null,2));await rm(join(storageRoot,"youtube-oauth-state.json"),{force:true}).catch(()=>{});
     res.redirect("https://asyfialr.github.io/Faceless-Studio/#youtube");
   }catch(e){console.error("YouTube OAuth callback failed",e);res.status(500).send("YouTube connection failed: "+e.message)}
 });
