@@ -319,9 +319,9 @@ const readYoutubeToken=async()=>{try{return JSON.parse(await readFile(youtubeTok
 
 app.get("/api/youtube/status",async(req,res)=>{
   const saved=await readYoutubeToken();if(!saved)return res.json({configured:youtubeConfigured(),connected:false,editScope:false,scopes:[],scopeVerified:false});
-  let scopes=String(saved.scope||"").split(/\\s+/).filter(Boolean),token=saved.access_token||"",scopeVerified=false,apiVerified=false,apiError="";
+  let scopes=String(saved.scope||"").split(/\s+/).filter(Boolean),token=saved.access_token||"",scopeVerified=false,apiVerified=false,apiError="";
   try{token=await youtubeAccessToken()}catch(e){apiError=e.message}
-  try{if(token){const r=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(token),{cache:"no-store"}),d=await r.json();if(r.ok&&d.scope){scopes=String(d.scope).split(/\\s+/).filter(Boolean);scopeVerified=true}}}catch(e){}
+  try{if(token){const r=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(token),{cache:"no-store"}),d=await r.json();if(r.ok&&d.scope){scopes=String(d.scope).split(/\s+/).filter(Boolean);scopeVerified=true}}}catch(e){}
   try{if(token){const r=await fetch("https://www.googleapis.com/youtube/v3/channels?part=id&mine=true",{headers:{Authorization:"Bearer "+token}}),d=await r.json();apiVerified=r.ok;if(!r.ok)apiError=d?.error?.message||("YouTube API HTTP "+r.status)}}catch(e){apiError=e.message}
   const editScope=scopes.includes("https://www.googleapis.com/auth/youtube.force-ssl")||scopes.includes("https://www.googleapis.com/auth/youtube");
   res.json({configured:youtubeConfigured(),connected:Boolean(saved.refresh_token||saved.access_token),editScope,scopes,scopeVerified,apiVerified,apiError});
@@ -340,7 +340,7 @@ app.get("/api/youtube/callback",async(req,res)=>{
     const saved=JSON.parse(await readFile(join(storageRoot,"youtube-oauth-state.json"),"utf8"));if(saved.state!==state||Date.now()-saved.createdAt>10*60*1000)throw new Error("Invalid or expired OAuth state");
     const body=new URLSearchParams({code,client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,redirect_uri:youtubeRedirect(),grant_type:"authorization_code"});
     const r=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.error||"Token exchange failed");
-    const previous=await readYoutubeToken();let grantedScopes=String(d.scope||"").split(/\\s+/).filter(Boolean);try{const vr=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(d.access_token),{cache:"no-store"}),vd=await vr.json();if(vr.ok&&vd.scope)grantedScopes=String(vd.scope).split(/\\s+/).filter(Boolean)}catch(e){}const merged={...previous,...d,scope:grantedScopes.join(" "),refresh_token:d.refresh_token||previous?.refresh_token,obtained_at:Date.now()};await writeFile(youtubeTokenPath,JSON.stringify(merged,null,2));await rm(join(storageRoot,"youtube-oauth-state.json"),{force:true}).catch(()=>{});
+    const previous=await readYoutubeToken();let grantedScopes=String(d.scope||"").split(/\s+/).filter(Boolean);try{const vr=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(d.access_token),{cache:"no-store"}),vd=await vr.json();if(vr.ok&&vd.scope)grantedScopes=String(vd.scope).split(/\s+/).filter(Boolean)}catch(e){}const merged={...previous,...d,scope:grantedScopes.join(" "),refresh_token:d.refresh_token||previous?.refresh_token,obtained_at:Date.now()};await writeFile(youtubeTokenPath,JSON.stringify(merged,null,2));await rm(join(storageRoot,"youtube-oauth-state.json"),{force:true}).catch(()=>{});
     res.redirect("https://asyfialr.github.io/Faceless-Studio/#youtube");
   }catch(e){console.error("YouTube OAuth callback failed",e);res.status(500).send("YouTube connection failed: "+e.message)}
 });
