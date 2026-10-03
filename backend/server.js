@@ -318,10 +318,13 @@ const youtubeConfigured=()=>Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GO
 const readYoutubeToken=async()=>{try{return JSON.parse(await readFile(youtubeTokenPath,"utf8"))}catch{return null}};
 
 app.get("/api/youtube/status",async(req,res)=>{
-  const token=await readYoutubeToken();let scopes=String(token?.scope||"").split(/\\s+/).filter(Boolean),verified=false;
-  try{if(token?.access_token){const r=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(token.access_token),{cache:"no-store"});const d=await r.json();if(r.ok&&d.scope){scopes=String(d.scope).split(/\\s+/).filter(Boolean);verified=true}}}catch(e){}
+  const saved=await readYoutubeToken();if(!saved)return res.json({configured:youtubeConfigured(),connected:false,editScope:false,scopes:[],scopeVerified:false});
+  let scopes=String(saved.scope||"").split(/\\s+/).filter(Boolean),token=saved.access_token||"",scopeVerified=false,apiVerified=false,apiError="";
+  try{token=await youtubeAccessToken()}catch(e){apiError=e.message}
+  try{if(token){const r=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(token),{cache:"no-store"}),d=await r.json();if(r.ok&&d.scope){scopes=String(d.scope).split(/\\s+/).filter(Boolean);scopeVerified=true}}}catch(e){}
+  try{if(token){const r=await fetch("https://www.googleapis.com/youtube/v3/channels?part=id&mine=true",{headers:{Authorization:"Bearer "+token}}),d=await r.json();apiVerified=r.ok;if(!r.ok)apiError=d?.error?.message||("YouTube API HTTP "+r.status)}}catch(e){apiError=e.message}
   const editScope=scopes.includes("https://www.googleapis.com/auth/youtube.force-ssl")||scopes.includes("https://www.googleapis.com/auth/youtube");
-  res.json({configured:youtubeConfigured(),connected:Boolean(token?.refresh_token||token?.access_token),editScope,scopes,scopeVerified:verified});
+  res.json({configured:youtubeConfigured(),connected:Boolean(saved.refresh_token||saved.access_token),editScope,scopes,scopeVerified,apiVerified,apiError});
 });
 app.get("/api/youtube/connect",(req,res)=>{
   if(!youtubeConfigured())return res.status(503).send("YouTube OAuth is not configured.");
