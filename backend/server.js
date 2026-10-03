@@ -21,6 +21,7 @@ try{
 const app=express();
 const port=process.env.PORT||3000;
 const allowedOrigin=process.env.FRONTEND_ORIGIN||"https://asyfialr.github.io";
+const storageRoot=process.env.STORAGE_DIR||"/data";
 
 app.use(cors({origin:allowedOrigin,exposedHeaders:["X-Project-Id","X-Video-Url"]}));
 app.use(express.json({limit:"40mb"}));
@@ -383,7 +384,7 @@ app.post("/api/render/shorts",async(req,res)=>{
   }catch(error){res.status(500).json({error:"shorts_render_failed",message:error.message})}
 });
 
-const storageRoot=process.env.STORAGE_DIR||"/data";
+
 app.use("/media",express.static(storageRoot,{maxAge:"1h"}));
 app.get("/api/projects/:id",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");
