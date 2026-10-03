@@ -484,9 +484,15 @@ async function generateMetadata(){
   }catch(e){status.textContent="Metadata failed: "+e.message;btn.textContent="Try Again"}finally{btn.disabled=false}
 }
 function useMetadataDraft(){
-  var title=document.getElementById("metadataLongTitle")?.value.trim(),desc=document.getElementById("metadataDescription")?.value.trim(),tags=document.getElementById("metadataHashtags")?.value.trim();
-  if(!title)return;var fullDesc=(desc+(tags?"\n\n"+tags:"")).trim();document.getElementById("youtubeTitle").value=title;document.getElementById("youtubeDescription").value=fullDesc;
-  var shorts=[1,2,3].map(i=>document.getElementById("metadataShort"+i)?.value.trim()||"");sessionStorage.setItem("youtubeShortTitles",JSON.stringify(shorts));sessionStorage.setItem("youtubeMetadataReady","1");document.getElementById("metadataStatus").textContent="Metadata draft selected ✓ It will be used for future uploads.";
+  var btn=document.getElementById("useMetadata"),status=document.getElementById("metadataStatus");
+  var title=(document.getElementById("metadataLongTitle")?.value||"").trim(),desc=(document.getElementById("metadataDescription")?.value||"").trim(),tags=(document.getElementById("metadataHashtags")?.value||"").trim();
+  if(!title){if(status)status.textContent="Generate or enter a Long title first.";return false}
+  var fullDesc=(desc+(tags?"\n\n"+tags:"")).trim(),shorts=[1,2,3].map(function(i){return (document.getElementById("metadataShort"+i)?.value||"").trim()});
+  var ytTitle=document.getElementById("youtubeTitle"),ytDesc=document.getElementById("youtubeDescription");if(ytTitle)ytTitle.value=title;if(ytDesc)ytDesc.value=fullDesc;
+  sessionStorage.setItem("youtubeShortTitles",JSON.stringify(shorts));sessionStorage.setItem("youtubeMetadataReady","1");sessionStorage.setItem("youtubeMetadataDraft",JSON.stringify({longTitle:title,description:fullDesc,shortsTitles:shorts}));
+  if(status)status.textContent="Metadata applied ✓ Long + 3 Shorts are ready for the next upload.";
+  if(btn){btn.textContent="✓ Metadata Applied";btn.classList.add("active")}
+  return false;
 }
 var metadataButton=document.getElementById("generateMetadata");if(metadataButton)metadataButton.onclick=function(e){e.preventDefault();generateMetadata()};
 var useMetadataButton=document.getElementById("useMetadata");if(useMetadataButton)useMetadataButton.onclick=function(e){e.preventDefault();useMetadataDraft()};
