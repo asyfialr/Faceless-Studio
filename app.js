@@ -322,13 +322,13 @@ async function generateVisualPlan(){
   btn.disabled=true;btn.textContent="Planning visuals…";out.classList.remove("empty");out.textContent="Gemini is breaking the narration into scenes…";
   try{
     var r=await fetch(API_BASE+"/api/ai/visual-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle,narration:narration})});
-    var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error);
-    var scenes=(data.plan&&data.plan.scenes)||[];
+    var data=await r.json();if(!r.ok)throw new Error(data.details||data.message||data.error);sessionStorage.removeItem("visualPlanError");
+    var scenes=Array.isArray(data.plan)?data.plan:((data.plan&&Array.isArray(data.plan.scenes))?data.plan.scenes:(Array.isArray(data.scenes)?data.scenes:[]));if(!scenes.length)throw new Error("Gemini returned no usable scenes.");
     sessionStorage.setItem("visualPlan",JSON.stringify(scenes));
     out.innerHTML=scenes.map(function(x,i){return '<div class="plan-scene" data-scene="'+i+'"><strong>Scene '+x.scene+' • '+x.duration+'</strong><p>'+x.visualPrompt+'</p>'+(x.onScreenText?'<small>Text: '+x.onScreenText+'</small>':'')+'<div class="script-actions"><button class="secondary generate-scene-media" data-scene="'+i+'">Generate Visual</button></div><div class="scene-media-status muted">Waiting</div><div class="scene-media-preview" hidden></div></div>'}).join("");
     $("mediaSummary").textContent="Media queue: 0/"+scenes.length+" scenes prepared.";
     btn.textContent="↻ Regenerate Visual Plan";$("productionStatus").textContent="Visual plan ready ✓ "+scenes.length+" scenes prepared.";
-  }catch(e){out.textContent="Visual planning failed: "+e.message;btn.textContent="Try Visual Plan Again"}
+  }catch(e){var msg="Visual planning failed: "+e.message;sessionStorage.setItem("visualPlanError",msg);out.textContent=msg;btn.textContent="Try Visual Plan Again"}
   finally{btn.disabled=false}
 }
 document.addEventListener("click",function(e){if(e.target&&e.target.id==="generateVisualPlan")generateVisualPlan()});
@@ -494,7 +494,7 @@ async function runFullAutopilot(){
     if(!sessionStorage.getItem("aiNarration")){status.textContent="1/9 • Writing AI script…";await buildScriptDraft()}else status.textContent="1/9 • Script checkpoint reused ✓";if(!sessionStorage.getItem("aiNarration"))throw new Error("Script was not generated.");
     sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
     var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio")){status.textContent="2/9 • Restoring voice checkpoint…";var restored=await restorePersistedVoice();if(!restored){status.textContent="2/9 • Generating voice…";await generateServerVoice()}else status.textContent="2/9 • Persisted voice restored ✓"}else status.textContent="2/9 • Voice checkpoint reused ✓";if(!voice?.src?.startsWith("data:audio")){var vs=(document.getElementById("productionStatus")?.textContent||"").trim();throw new Error(vs||"Voice generation failed.")}
-    if(!document.querySelectorAll(".generate-scene-media").length){status.textContent="3/9 • Planning visuals…";await generateVisualPlan()}else status.textContent="3/9 • Visual plan checkpoint reused ✓";if(!document.querySelectorAll(".generate-scene-media").length){var vp=(document.getElementById("visualPlanOutput")?.textContent||"").trim();throw new Error(vp&&vp!=="No visual plan yet."?vp:"Visual plan failed. Check Gemini response.")}
+    if(!document.querySelectorAll(".generate-scene-media").length){status.textContent="3/9 • Planning visuals…";await generateVisualPlan()}else status.textContent="3/9 • Visual plan checkpoint reused ✓";if(!document.querySelectorAll(".generate-scene-media").length){var vp=sessionStorage.getItem("visualPlanError")||(document.getElementById("visualPlanOutput")?.textContent||"").trim();throw new Error(vp&&vp!=="No visual plan yet."?vp:"Visual plan failed. Check Gemini response.")}
     status.textContent="4/9 • Generating scene visuals…";await generateAllVisuals();var mediaStatus=Array.from(document.querySelectorAll(".scene-media-status"));if(!mediaStatus.length||mediaStatus.some(function(x){return !(x.textContent||"").includes("ready ✓")}))throw new Error("One or more visuals could not be generated. Check Cloudflare image quota, then retry.");
     buildSceneMotion();
     if(!sessionStorage.getItem("renderReady")){status.textContent="5/9 • Rendering Long video…";await renderMp4()}else status.textContent="5/9 • Long render checkpoint reused ✓";if(!sessionStorage.getItem("renderReady"))throw new Error("Long render failed.");
