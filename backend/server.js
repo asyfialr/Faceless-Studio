@@ -406,11 +406,11 @@ app.post("/api/youtube/publish-project",async(req,res)=>{
 
 function zonedLocalToUtc(date,time,timeZone){
   const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date||"")),t=/^(\d{2}):(\d{2})$/.exec(String(time||""));if(!m||!t)throw new Error("Invalid schedule date/time");
-  const target={year:+m[1],month:+m[2],day:+m[3],hour:+t[1],minute:+t[2]},guess=Date.UTC(target.year,target.month-1,target.day,target.hour,target.minute);
-  const partsAt=ms=>Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(ms)).filter(x=>x.type!=="literal").map(x=>[x.type,+x.value]));
-  let ms=guess;for(let i=0;i<3;i++){const p=partsAt(ms),seen=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute),want=Date.UTC(target.year,target.month-1,target.day,target.hour,target.minute);ms+=want-seen}
-  const check=partsAt(ms);if(check.year!==target.year||check.month!==target.month||check.day!==target.day||check.hour!==target.hour||check.minute!==target.minute)throw new Error("Selected local time is invalid in "+timeZone);
-  return new Date(ms);
+  const wanted=Date.UTC(+m[1],+m[2]-1,+m[3],+t[1],+t[2]),fmt=new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+  const wallMs=ms=>{const p=Object.fromEntries(fmt.formatToParts(new Date(ms)).filter(x=>x.type!=="literal").map(x=>[x.type,+x.value]));return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second||0)};
+  let utc=wanted;for(let i=0;i<4;i++)utc=wanted-(wallMs(utc)-utc);
+  if(Math.abs(wallMs(utc)-wanted)>1000)throw new Error("Selected local time is invalid or ambiguous in "+timeZone);
+  return new Date(utc);
 }
 async function youtubeVideoExists(id,token){
   if(!id)return false;
@@ -441,7 +441,7 @@ app.post("/api/youtube/schedule-project",async(req,res)=>{
     }
     if(missing.length)return res.status(409).json({error:"Saved YouTube upload is missing: "+missing.join(", ")+". Run Auto Publish to re-upload missing videos.",missing});
     project.youtube.schedule=scheduled;project.youtube.privacyStatus="private";project.youtube.scheduledAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(project,null,2));
-    res.json({ok:true,scheduled});
+    res.json({ok:true,scheduled,requestedLocal:{date:scheduleDate,time:scheduleTime,timeZone},resolvedUtc:base.toISOString()});
   }catch(e){console.error("YouTube scheduling failed",e);res.status(500).json({error:e.message||"YouTube scheduling failed"})}
 });
 
