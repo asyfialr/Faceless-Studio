@@ -403,6 +403,25 @@ app.post("/api/youtube/publish-project",async(req,res)=>{
   }catch(e){console.error("YouTube publish project failed",e);res.status(500).json({error:e.message||"YouTube publishing failed"})}
 });
 
+app.post("/api/youtube/schedule-project",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),longAt=String(req.body?.longPublishAt||""),intervalDays=Math.max(1,Math.min(30,Number(req.body?.shortIntervalDays||1)));
+    if(!projectId||!longAt)return res.status(400).json({error:"projectId and longPublishAt required"});
+    const base=new Date(longAt);if(!Number.isFinite(base.getTime())||base.getTime()<=Date.now()+60000)return res.status(400).json({error:"Schedule time must be in the future"});
+    const metaPath=join(storageRoot,projectId,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),yt=project.youtube||{};
+    const entries=[];if(yt.longVideoId)entries.push({type:"long",id:yt.longVideoId,at:new Date(base)});
+    (yt.shorts||[]).forEach((x,i)=>{if(x?.videoId){const at=new Date(base);at.setUTCDate(at.getUTCDate()+(i+1)*intervalDays);entries.push({type:"short"+(i+1),id:x.videoId,at})}});
+    if(!entries.length)return res.status(400).json({error:"No uploaded YouTube videos found"});
+    const token=await youtubeAccessToken(),scheduled=[];
+    for(const item of entries){
+      const publishAt=item.at.toISOString();const r=await fetch("https://www.googleapis.com/youtube/v3/videos?part=status",{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({id:item.id,status:{privacyStatus:"private",publishAt,selfDeclaredMadeForKids:false}})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(item.type+" schedule "+r.status+" "+JSON.stringify(d).slice(0,500));scheduled.push({type:item.type,videoId:item.id,publishAt});
+    }
+    project.youtube.schedule=scheduled;project.youtube.privacyStatus="private";project.youtube.scheduledAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(project,null,2));
+    res.json({ok:true,scheduled});
+  }catch(e){console.error("YouTube scheduling failed",e);res.status(500).json({error:e.message||"YouTube scheduling failed"})}
+});
+
 app.post("/api/ai/thumbnail",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
