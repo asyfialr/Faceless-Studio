@@ -318,7 +318,10 @@ const youtubeConfigured=()=>Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GO
 const readYoutubeToken=async()=>{try{return JSON.parse(await readFile(youtubeTokenPath,"utf8"))}catch{return null}};
 
 app.get("/api/youtube/status",async(req,res)=>{
-  const token=await readYoutubeToken(),scopes=String(token?.scope||"").split(/\\s+/).filter(Boolean),editScope=scopes.includes("https://www.googleapis.com/auth/youtube.force-ssl")||scopes.includes("https://www.googleapis.com/auth/youtube");res.json({configured:youtubeConfigured(),connected:Boolean(token?.refresh_token||token?.access_token),editScope,scopes});
+  const token=await readYoutubeToken();let scopes=String(token?.scope||"").split(/\\s+/).filter(Boolean),verified=false;
+  try{if(token?.access_token){const r=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(token.access_token),{cache:"no-store"});const d=await r.json();if(r.ok&&d.scope){scopes=String(d.scope).split(/\\s+/).filter(Boolean);verified=true}}}catch(e){}
+  const editScope=scopes.includes("https://www.googleapis.com/auth/youtube.force-ssl")||scopes.includes("https://www.googleapis.com/auth/youtube");
+  res.json({configured:youtubeConfigured(),connected:Boolean(token?.refresh_token||token?.access_token),editScope,scopes,scopeVerified:verified});
 });
 app.get("/api/youtube/connect",(req,res)=>{
   if(!youtubeConfigured())return res.status(503).send("YouTube OAuth is not configured.");
