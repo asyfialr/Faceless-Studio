@@ -416,6 +416,15 @@ async function youtubeVideoExists(id,token){
   if(!id)return false;
   try{const r=await fetch("https://www.googleapis.com/youtube/v3/videos?part=id&id="+encodeURIComponent(id),{headers:{Authorization:"Bearer "+token}}),d=await r.json();return Boolean(r.ok&&Array.isArray(d.items)&&d.items.some(x=>x.id===id))}catch(e){return false}
 }
+app.post("/api/youtube/verify-project",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!projectId)return res.status(400).json({error:"projectId required"});
+    const metaPath=join(storageRoot,projectId,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),token=await youtubeAccessToken(),yt=project.youtube||{};
+    if(yt.longVideoId&&!(await youtubeVideoExists(yt.longVideoId,token)))delete yt.longVideoId;
+    if(Array.isArray(yt.shorts))for(let i=0;i<yt.shorts.length;i++)if(yt.shorts[i]?.videoId&&!(await youtubeVideoExists(yt.shorts[i].videoId,token)))yt.shorts[i]=null;
+    project.youtube=yt;await writeFile(metaPath,JSON.stringify(project,null,2));res.json({ok:true,youtube:yt});
+  }catch(e){res.status(500).json({error:e.message||"YouTube verification failed"})}
+});
 app.post("/api/youtube/schedule-project",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),longAt=String(req.body?.longPublishAt||""),scheduleDate=String(req.body?.scheduleDate||""),scheduleTime=String(req.body?.scheduleTime||""),timeZone=String(req.body?.timeZone||"America/New_York"),intervalDays=Math.max(1,Math.min(30,Number(req.body?.shortIntervalDays||1)));
