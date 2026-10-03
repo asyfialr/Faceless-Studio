@@ -449,7 +449,7 @@ var youtubePrivacyButton=document.getElementById("applyYouTubePrivacy");if(youtu
 
 async function scheduleYouTubeProject(){
   var btn=document.getElementById("scheduleYouTubeProject"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
-  var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,timeZone=document.getElementById("scheduleTimezone")?.value||"America/New_York",interval=Number(document.getElementById("shortInterval")?.value||1);
+  var date=document.getElementById("youtubeScheduleDate")?.value||document.getElementById("scheduleDate")?.value,time=document.getElementById("youtubeScheduleTime")?.value||document.getElementById("scheduleTime")?.value,timeZone=document.getElementById("youtubeScheduleTimezone")?.value||document.getElementById("scheduleTimezone")?.value||"America/New_York",interval=Number(document.getElementById("youtubeShortInterval")?.value||document.getElementById("shortInterval")?.value||1);
   if(!id){status.textContent="Select an uploaded project first.";return}if(!date||!time){status.textContent="Set date/time in Scheduler first.";return}
   if(!date||!time){status.textContent="Set a schedule date and time first.";return}
   if(!confirm("Schedule the Long video and 3 Shorts on YouTube using this plan?"))return;
@@ -459,6 +459,12 @@ async function scheduleYouTubeProject(){
 }
 var youtubeScheduleButton=document.getElementById("scheduleYouTubeProject");if(youtubeScheduleButton)youtubeScheduleButton.onclick=function(e){e.preventDefault();scheduleYouTubeProject()};
 
+function syncYouTubeScheduleControls(){
+  var map=[["scheduleDate","youtubeScheduleDate"],["scheduleTime","youtubeScheduleTime"],["scheduleTimezone","youtubeScheduleTimezone"],["shortInterval","youtubeShortInterval"]];
+  map.forEach(function(pair){var a=document.getElementById(pair[0]),b=document.getElementById(pair[1]);if(!a||!b)return;if(!b.value)b.value=a.value;else if(!a.value)a.value=b.value;b.onchange=function(){a.value=b.value};a.onchange=function(){b.value=a.value}});
+  var d=document.getElementById("youtubeScheduleDate");if(d&&!d.value){var n=new Date();n.setDate(n.getDate()+1);d.value=isoDate(n);var a=document.getElementById("scheduleDate");if(a)a.value=d.value}
+}
+syncYouTubeScheduleControls();
 async function autoPublishYouTube(){
   var btn=document.getElementById("autoPublishYouTube"),status=document.getElementById("youtubeRealScheduleStatus"),id=localStorage.getItem("activeProjectId");
   var date=document.getElementById("scheduleDate")?.value,time=document.getElementById("scheduleTime")?.value,interval=Number(document.getElementById("shortInterval")?.value||1);
