@@ -428,7 +428,7 @@ async function uploadYouTubeShorts(){
   if(!id){status.textContent="Render/select a project first.";return}
   var title=document.getElementById("youtubeTitle")?.value||sessionStorage.getItem("selectedTitle")||"Faceless Studio",description=document.getElementById("youtubeDescription")?.value||"";
   btn.disabled=true;var done=[];
-  try{for(var i=1;i<=3;i++){btn.textContent="Uploading Short "+i+"/3…";status.textContent="Uploading Short "+i+" of 3 to YouTube as Private…";var r=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:title+" — Short "+i,description:description})}),d=await r.json();if(!r.ok)throw new Error("Short "+i+": "+(d.error||"upload failed"));done.push(d)}
+  try{for(var i=1;i<=3;i++){btn.textContent="Uploading Short "+i+"/3…";status.textContent="Uploading Short "+i+" of 3 to YouTube as Private…";var r=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:(function(){try{return JSON.parse(sessionStorage.getItem("youtubeShortTitles")||"[]")[i-1]||title+" — Short "+i}catch(e){return title+" — Short "+i}})(),description:description})}),d=await r.json();if(!r.ok)throw new Error("Short "+i+": "+(d.error||"upload failed"));done.push(d)}
     status.textContent="3 Shorts uploaded to YouTube ✓ All Private";btn.textContent="3 Shorts Uploaded ✓";
   }catch(e){status.textContent="Shorts upload stopped: "+e.message+" • "+done.length+"/3 completed";btn.textContent="Try Upload Shorts Again"}finally{btn.disabled=false}
 }
@@ -468,12 +468,28 @@ async function autoPublishYouTube(){
   try{
     status.textContent="Checking existing YouTube uploads…";var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id)),project=pr.ok?await pr.json():{},yt=project.youtube||{};
     if(!yt.longVideoId){status.textContent="Uploading missing Long video…";var lr=await fetch(API_BASE+"/api/youtube/upload-long",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,title:title,description:description})}),ld=await lr.json();if(!lr.ok)throw new Error(ld.error||"Long upload failed")}
-    for(var i=1;i<=3;i++){var current=(yt.shorts||[])[i-1];if(!current?.videoId){status.textContent="Uploading missing Short "+i+"/3…";var sr=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:title+" — Short "+i,description:description})}),sd=await sr.json();if(!sr.ok)throw new Error("Short "+i+": "+(sd.error||"upload failed"))}}
+    for(var i=1;i<=3;i++){var current=(yt.shorts||[])[i-1];if(!current?.videoId){status.textContent="Uploading missing Short "+i+"/3…";var sr=await fetch(API_BASE+"/api/youtube/upload-short",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,index:i,title:(function(){try{return JSON.parse(sessionStorage.getItem("youtubeShortTitles")||"[]")[i-1]||title+" — Short "+i}catch(e){return title+" — Short "+i}})(),description:description})}),sd=await sr.json();if(!sr.ok)throw new Error("Short "+i+": "+(sd.error||"upload failed"))}}
     status.textContent="Uploads ready. Applying YouTube schedule…";var rr=await fetch(API_BASE+"/api/youtube/schedule-project",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:id,longPublishAt:local.toISOString(),shortIntervalDays:interval})}),rd=await rr.json();if(!rr.ok)throw new Error(rd.error||"Scheduling failed");
     status.textContent=rd.scheduled.length+" videos Auto Published ✓ YouTube schedule active";btn.textContent="Auto Publish Ready ✓";
   }catch(e){status.textContent="Auto Publish stopped: "+e.message;btn.textContent="Retry Auto Publish"}finally{btn.disabled=false}
 }
 var autoPublishButton=document.getElementById("autoPublishYouTube");if(autoPublishButton)autoPublishButton.onclick=function(e){e.preventDefault();autoPublishYouTube()};
+
+async function generateMetadata(){
+  var btn=document.getElementById("generateMetadata"),status=document.getElementById("metadataStatus"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"",narration=sessionStorage.getItem("aiNarration")||"";
+  if(!title){status.textContent="Choose/generate a topic first.";return}btn.disabled=true;btn.textContent="Generating…";status.textContent="Gemini is drafting YouTube metadata…";
+  try{var r=await fetch(API_BASE+"/api/ai/metadata",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:title,narration:narration})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Metadata failed");
+    document.getElementById("metadataLongTitle").value=d.longTitle||"";document.getElementById("metadataDescription").value=d.description||"";document.getElementById("metadataHashtags").value=(d.hashtags||[]).map(x=>"#"+x).join(" ");
+    for(var i=1;i<=3;i++)document.getElementById("metadataShort"+i).value=d.shortsTitles?.[i-1]||"";status.textContent="AI metadata draft ready ✓ Review/edit before using.";btn.textContent="↻ Regenerate Metadata";
+  }catch(e){status.textContent="Metadata failed: "+e.message;btn.textContent="Try Again"}finally{btn.disabled=false}
+}
+function useMetadataDraft(){
+  var title=document.getElementById("metadataLongTitle")?.value.trim(),desc=document.getElementById("metadataDescription")?.value.trim(),tags=document.getElementById("metadataHashtags")?.value.trim();
+  if(!title)return;var fullDesc=(desc+(tags?"\n\n"+tags:"")).trim();document.getElementById("youtubeTitle").value=title;document.getElementById("youtubeDescription").value=fullDesc;
+  var shorts=[1,2,3].map(i=>document.getElementById("metadataShort"+i)?.value.trim()||"");sessionStorage.setItem("youtubeShortTitles",JSON.stringify(shorts));sessionStorage.setItem("youtubeMetadataReady","1");document.getElementById("metadataStatus").textContent="Metadata draft selected ✓ It will be used for future uploads.";
+}
+var metadataButton=document.getElementById("generateMetadata");if(metadataButton)metadataButton.onclick=function(e){e.preventDefault();generateMetadata()};
+var useMetadataButton=document.getElementById("useMetadata");if(useMetadataButton)useMetadataButton.onclick=function(e){e.preventDefault();useMetadataDraft()};
 
 async function generateThumbnail(){
   var btn=document.getElementById("generateThumbnail"),status=document.getElementById("thumbnailStatus"),img=document.getElementById("thumbnailPreview"),id=localStorage.getItem("activeProjectId"),title=sessionStorage.getItem("selectedTitle")||document.getElementById("youtubeTitle")?.value||"";
