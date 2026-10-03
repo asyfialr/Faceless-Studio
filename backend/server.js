@@ -466,18 +466,26 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
     if(!projectId||!title)return res.status(400).json({error:"projectId and title required"});
-    const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_AI_TOKEN;
-    if(!account||!token)return res.status(503).json({error:"Cloudflare AI is not configured"});
-    const prompt="YouTube thumbnail background, 16:9 cinematic composition, highly clickable but not misleading, strong focal subject, dramatic lighting, clean composition, no text, no logos, no watermark. Video topic: "+title;
-    const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+account+"/ai/run/@cf/black-forest-labs/flux-1-schnell",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt})});
-    if(!r.ok)throw new Error("Cloudflare image "+r.status+" "+(await r.text()).slice(0,300));
-    const ct=r.headers.get("content-type")||"";let buf;
-    if(ct.includes("application/json")){const d=await r.json(),b64=d?.result?.image||d?.result;if(typeof b64!=="string")throw new Error("Thumbnail image missing");buf=Buffer.from(b64.replace(/^data:image\/\w+;base64,/,""),"base64")}else buf=Buffer.from(await r.arrayBuffer());
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
-    const out=join(projectDir,"thumbnail.jpg");await sharp(buf).resize(1280,720,{fit:"cover"}).jpeg({quality:90}).toFile(out);
+    const out=join(projectDir,"thumbnail.jpg");let provider="local";
+    const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_AI_TOKEN;
+    if(account&&token)try{
+      const prompt="YouTube thumbnail background, 16:9 cinematic composition, highly clickable but not misleading, strong focal subject, dramatic lighting, clean composition, no text, no logos, no watermark. Video topic: "+title;
+      const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+account+"/ai/run/@cf/black-forest-labs/flux-1-schnell",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt})});
+      if(!r.ok)throw new Error("Cloudflare "+r.status);
+      const ct=r.headers.get("content-type")||"";let buf;if(ct.includes("application/json")){const d=await r.json(),b64=d?.result?.image||d?.result;if(typeof b64!=="string")throw new Error("image missing");buf=Buffer.from(b64.replace(/^data:image\/\w+;base64,/,""),"base64")}else buf=Buffer.from(await r.arrayBuffer());
+      await sharp(buf).resize(1280,720,{fit:"cover"}).jpeg({quality:90}).toFile(out);provider="cloudflare";
+    }catch(e){console.warn("Thumbnail AI fallback:",e.message)}
+    if(provider==="local"){
+      const words=title.split(/\s+/).filter(Boolean).slice(0,7),lines=[];while(words.length)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
+      const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]));
+      const tspans=lines.slice(0,3).map((x,i)=>'<tspan x="82" dy="'+(i?92:0)+'">'+esc(x.toUpperCase())+'</tspan>').join("");
+      const svg=Buffer.from('<svg width="1280" height="720" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#090d18"/><stop offset="1" stop-color="#27314a"/></linearGradient><radialGradient id="r"><stop stop-color="#6b789c" stop-opacity=".7"/><stop offset="1" stop-color="#111827" stop-opacity="0"/></radialGradient></defs><rect width="1280" height="720" fill="url(#g)"/><circle cx="1040" cy="170" r="390" fill="url(#r)"/><rect x="82" y="128" width="112" height="12" rx="6" fill="#fff"/><text x="82" y="255" fill="#fff" font-family="Arial,sans-serif" font-weight="800" font-size="78">'+tspans+'</text><text x="86" y="610" fill="#cbd5e1" font-family="Arial,sans-serif" font-size="28">FACELESS STUDIO</text></svg>');
+      await sharp(svg).jpeg({quality:92}).toFile(out);
+    }
     const url="/media/"+projectId+"/thumbnail.jpg",metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
-    meta.thumbnailUrl=url;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,thumbnailUrl:url});
+    meta.thumbnailUrl=url;meta.thumbnailProvider=provider;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,thumbnailUrl:url,provider});
   }catch(e){console.error("Thumbnail generation failed",e);res.status(500).json({error:e.message||"Thumbnail generation failed"})}
 });
 
