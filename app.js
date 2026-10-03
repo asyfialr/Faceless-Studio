@@ -487,7 +487,7 @@ async function runFullAutopilot(){
     status.textContent="1/9 • Writing AI script…";await buildScriptDraft();if(!sessionStorage.getItem("aiNarration"))throw new Error("Script was not generated.");
     sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
     status.textContent="2/9 • Generating voice…";await generateServerVoice();var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio"))throw new Error("Voice generation failed.");
-    status.textContent="3/9 • Planning visuals…";await generateVisualPlan();if(!document.querySelectorAll(".generate-scene-media").length)throw new Error("Visual plan failed.");
+    status.textContent="3/9 • Planning visuals…";await generateVisualPlan();if(!document.querySelectorAll(".generate-scene-media").length){var vp=(document.getElementById("visualPlanOutput")?.textContent||"").trim();throw new Error(vp&&vp!=="No visual plan yet."?vp:"Visual plan failed. Check Gemini response.")}
     status.textContent="4/9 • Generating scene visuals…";await generateAllVisuals();var mediaStatus=Array.from(document.querySelectorAll(".scene-media-status"));if(!mediaStatus.length||mediaStatus.some(function(x){return !(x.textContent||"").includes("ready ✓")}))throw new Error("One or more visuals could not be generated. Check Cloudflare image quota, then retry.");
     buildSceneMotion();
     status.textContent="5/9 • Rendering Long video…";await renderMp4();if(!sessionStorage.getItem("renderReady"))throw new Error("Long render failed.");
