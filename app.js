@@ -356,13 +356,15 @@ async function generateAllVisuals(){
   var buttons=Array.from(document.querySelectorAll(".generate-scene-media"));
   if(!buttons.length){progress.textContent="Generate a Visual Plan first.";return}
   master.disabled=true;master.textContent="Generating All…";
-  var ok=0,failed=0;
+  var ok=0,failed=0,skipped=0;
   for(var i=0;i<buttons.length;i++){
-    progress.textContent="Generating "+(i+1)+"/"+buttons.length+" • "+ok+" ready"+(failed?" • "+failed+" failed":"");
+    var card=buttons[i].closest(".plan-scene"),sceneStatus=card.querySelector(".scene-media-status"),preview=card.querySelector(".scene-media-preview img");
+    if(preview&&(sceneStatus.textContent||"").includes("ready ✓")){ok++;skipped++;progress.textContent="Keeping existing visual "+(i+1)+"/"+buttons.length+" • "+ok+" ready";continue}
+    progress.textContent="Generating missing visual "+(i+1)+"/"+buttons.length+" • "+ok+" ready"+(failed?" • "+failed+" failed":"");
     await prepareSceneMedia(Number(buttons[i].getAttribute("data-scene")),buttons[i]);
-    if((buttons[i].closest(".plan-scene").querySelector(".scene-media-status").textContent||"").includes("ready ✓"))ok++;else failed++;
+    if((sceneStatus.textContent||"").includes("ready ✓"))ok++;else failed++;
   }
-  progress.textContent="Batch complete • "+ok+"/"+buttons.length+" visuals ready"+(failed?" • "+failed+" failed":"")+" ✓";
+  progress.textContent="Batch complete • "+ok+"/"+buttons.length+" visuals ready"+(skipped?" • "+skipped+" reused":"")+(failed?" • "+failed+" failed":"")+" ✓";
   master.textContent=failed?"Retry / Generate All Visuals":"↻ Regenerate All Visuals";master.disabled=false;
 }
 function buildSceneMotion(){
