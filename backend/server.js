@@ -404,11 +404,19 @@ app.post("/api/youtube/publish-project",async(req,res)=>{
   }catch(e){console.error("YouTube publish project failed",e);res.status(500).json({error:e.message||"YouTube publishing failed"})}
 });
 
+function zonedLocalToUtc(date,time,timeZone){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date||"")),t=/^(\d{2}):(\d{2})$/.exec(String(time||""));if(!m||!t)throw new Error("Invalid schedule date/time");
+  const target={year:+m[1],month:+m[2],day:+m[3],hour:+t[1],minute:+t[2]},guess=Date.UTC(target.year,target.month-1,target.day,target.hour,target.minute);
+  const partsAt=ms=>Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(ms)).filter(x=>x.type!=="literal").map(x=>[x.type,+x.value]));
+  let ms=guess;for(let i=0;i<3;i++){const p=partsAt(ms),seen=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute),want=Date.UTC(target.year,target.month-1,target.day,target.hour,target.minute);ms+=want-seen}
+  const check=partsAt(ms);if(check.year!==target.year||check.month!==target.month||check.day!==target.day||check.hour!==target.hour||check.minute!==target.minute)throw new Error("Selected local time is invalid in "+timeZone);
+  return new Date(ms);
+}
 app.post("/api/youtube/schedule-project",async(req,res)=>{
   try{
-    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),longAt=String(req.body?.longPublishAt||""),intervalDays=Math.max(1,Math.min(30,Number(req.body?.shortIntervalDays||1)));
-    if(!projectId||!longAt)return res.status(400).json({error:"projectId and longPublishAt required"});
-    const base=new Date(longAt);if(!Number.isFinite(base.getTime())||base.getTime()<=Date.now()+60000)return res.status(400).json({error:"Schedule time must be in the future"});
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),longAt=String(req.body?.longPublishAt||""),scheduleDate=String(req.body?.scheduleDate||""),scheduleTime=String(req.body?.scheduleTime||""),timeZone=String(req.body?.timeZone||"America/New_York"),intervalDays=Math.max(1,Math.min(30,Number(req.body?.shortIntervalDays||1)));
+    if(!projectId||(!longAt&&(!scheduleDate||!scheduleTime)))return res.status(400).json({error:"projectId and schedule date/time required"});
+    let base;if(scheduleDate&&scheduleTime){try{base=zonedLocalToUtc(scheduleDate,scheduleTime,timeZone)}catch(e){return res.status(400).json({error:e.message})}}else base=new Date(longAt);if(!Number.isFinite(base.getTime())||base.getTime()<=Date.now()+60000)return res.status(400).json({error:"Schedule time must be in the future"});
     const metaPath=join(storageRoot,projectId,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),yt=project.youtube||{};
     const entries=[];if(yt.longVideoId)entries.push({type:"long",id:yt.longVideoId,at:new Date(base)});
     (yt.shorts||[]).forEach((x,i)=>{if(x?.videoId){const at=new Date(base);at.setUTCDate(at.getUTCDate()+(i+1)*intervalDays);entries.push({type:"short"+(i+1),id:x.videoId,at})}});
