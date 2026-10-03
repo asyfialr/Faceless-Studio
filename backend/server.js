@@ -121,19 +121,16 @@ app.post("/api/ai/visual-plan",async(req,res)=>{
   if(!geminiKey)return res.status(503).json({error:"gemini_not_configured"});
   if(!narration)return res.status(400).json({error:"narration_required"});
   try{
-    const model=process.env.GEMINI_PLANNER_MODEL||"gemini-3.5-flash-lite";
+    const models=[process.env.GEMINI_PLANNER_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);let model=models[0];
     const prompt="Create a visual plan for an original faceless YouTube video. Title: "+title+"\nNarration: "+narration.slice(0,12000)+"\nReturn ONLY valid JSON with key scenes. scenes must be an array of 6 to 10 objects with keys: scene (number), duration (short string like 8-12 sec), visualPrompt (specific original B-roll/image/video direction), onScreenText (short string, may be empty). Keep visuals safe, realistic, copyright-conscious, and suitable for a US/international audience.";
     let r,data;
-    for(let attempt=1;attempt<=3;attempt++){
+    for(const candidate of models){model=candidate;for(let attempt=1;attempt<=3;attempt++){
       r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})
       });
-      data=await r.json();
-      if(r.ok)break;
-      if(!(r.status===429||r.status===503)||attempt===3)break;
-      await new Promise(resolve=>setTimeout(resolve,attempt*1500));
-    }
+      data=await r.json();if(r.ok)break;if(!(r.status===429||r.status===503)||attempt===3)break;await new Promise(resolve=>setTimeout(resolve,attempt*1500));
+    }if(r?.ok)break}
     if(!r.ok)return res.status(502).json({error:"visual_plan_failed",details:data?.error?.message||"Gemini visual planning failed"});
     const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
     const plan=JSON.parse(raw);
