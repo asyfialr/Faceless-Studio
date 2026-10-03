@@ -329,7 +329,7 @@ app.get("/api/youtube/connect",(req,res)=>{
   if(!youtubeConfigured())return res.status(503).send("YouTube OAuth is not configured.");
   const state=crypto.randomUUID(),statePath=join(storageRoot,"youtube-oauth-state.json");
   writeFile(statePath,JSON.stringify({state,createdAt:Date.now()})).then(()=>{
-    const q=new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,redirect_uri:youtubeRedirect(),response_type:"code",scope:"https://www.googleapis.com/auth/youtube.upload",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state});
+    const q=new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,redirect_uri:youtubeRedirect(),response_type:"code",scope:"https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state});
     res.redirect("https://accounts.google.com/o/oauth2/v2/auth?"+q.toString());
   }).catch(e=>res.status(500).send(e.message));
 });
