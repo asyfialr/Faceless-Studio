@@ -422,6 +422,23 @@ app.post("/api/youtube/schedule-project",async(req,res)=>{
   }catch(e){console.error("YouTube scheduling failed",e);res.status(500).json({error:e.message||"YouTube scheduling failed"})}
 });
 
+app.post("/api/ai/metadata",async(req,res)=>{
+  try{
+    const key=process.env.GEMINI_API_KEY,title=String(req.body?.title||"").trim(),narration=String(req.body?.narration||"").trim();
+    if(!key)return res.status(503).json({error:"Gemini is not configured"});if(!title)return res.status(400).json({error:"title required"});
+    const prompt="Create YouTube metadata for a faceless video targeting a US/international English audience. Be compelling but accurate, not clickbait or misleading. Topic: "+title+"\nNarration context: "+narration.slice(0,6000)+"\nReturn ONLY valid JSON with: longTitle (max 90 chars), description (2 concise paragraphs plus natural CTA), hashtags (array of 3-5 strings without #), shortsTitles (array of exactly 3 distinct titles, each max 80 chars).";
+    const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);let last="";
+    for(const model of models){
+      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})});
+      const d=await r.json();if(!r.ok){last=JSON.stringify(d).slice(0,500);continue}
+      const raw=d?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join("")||"";let out;try{out=JSON.parse(raw)}catch{throw new Error("Gemini returned invalid metadata JSON")}
+      out.longTitle=String(out.longTitle||title).slice(0,90);out.description=String(out.description||"").slice(0,4500);out.hashtags=Array.isArray(out.hashtags)?out.hashtags.slice(0,5).map(x=>String(x).replace(/^#/,"")):[];out.shortsTitles=Array.isArray(out.shortsTitles)?out.shortsTitles.slice(0,3).map(x=>String(x).slice(0,80)):[];
+      while(out.shortsTitles.length<3)out.shortsTitles.push((out.longTitle+" — Short "+(out.shortsTitles.length+1)).slice(0,80));
+      return res.json(out);
+    }throw new Error("Gemini metadata failed "+last);
+  }catch(e){console.error("AI metadata failed",e);res.status(500).json({error:e.message||"AI metadata failed"})}
+});
+
 app.post("/api/ai/thumbnail",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
