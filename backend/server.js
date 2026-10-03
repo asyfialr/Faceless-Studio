@@ -96,24 +96,22 @@ app.post("/api/ai/script",async(req,res)=>{
 });
 
 app.post("/api/ai/image",async(req,res)=>{
-  const accountId=process.env.CLOUDFLARE_ACCOUNT_ID;
-  const token=process.env.CLOUDFLARE_AI_TOKEN;
-  const prompt=String(req.body?.prompt||"").trim();
-  if(!accountId||!token)return res.status(503).json({error:"cloudflare_not_configured",message:"Cloudflare Workers AI is not configured."});
-  if(!prompt)return res.status(400).json({error:"prompt_required"});
-  try{
-    const model="@cf/black-forest-labs/flux-1-schnell";
-    const r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(accountId)+"/ai/run/"+model,{
-      method:"POST",
-      headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
-      body:JSON.stringify({prompt:prompt.slice(0,2048),steps:4})
-    });
-    const data=await r.json();
-    if(!r.ok||data?.success===false)return res.status(r.status||502).json({error:"cloudflare_image_error",details:data?.errors?.map(e=>e.message).join("; ")||"Cloudflare image generation failed"});
-    const image=data?.result?.image;
-    if(!image)return res.status(502).json({error:"image_missing",details:"Cloudflare returned no image."});
-    return res.json({ok:true,provider:"cloudflare",model,mimeType:"image/jpeg",image});
-  }catch(error){return res.status(500).json({error:"image_generation_failed",message:error.message})}
+  const accountId=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_AI_TOKEN,geminiKey=process.env.GEMINI_API_KEY;
+  const prompt=String(req.body?.prompt||"").trim();if(!prompt)return res.status(400).json({error:"prompt_required"});
+  let cloudflareError="not configured";
+  if(accountId&&token)try{
+    const model="@cf/black-forest-labs/flux-1-schnell",r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(accountId)+"/ai/run/"+model,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt:prompt.slice(0,2048),steps:4})}),data=await r.json();
+    const image=data?.result?.image;if(r.ok&&data?.success!==false&&image)return res.json({ok:true,provider:"cloudflare",model,mimeType:"image/jpeg",image});
+    cloudflareError=(data?.errors?.map(e=>e.message).join("; ")||data?.error?.message||("HTTP "+r.status)).slice(0,500);
+  }catch(e){cloudflareError=e.message}
+  if(geminiKey)try{
+    const model=process.env.GEMINI_IMAGE_MODEL||"gemini-3.1-flash-image";
+    const r=await fetch("https://generativelanguage.googleapis.com/v1/models/"+model+":generateContent",{method:"POST",headers:{"x-goog-api-key":geminiKey,"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:"Generate one original cinematic 16:9 image for a faceless YouTube video. No logos, watermarks, copyrighted characters, or text. "+prompt.slice(0,1800)}]}],generationConfig:{responseModalities:["IMAGE"]}})});
+    const data=await r.json(),parts=data?.candidates?.[0]?.content?.parts||[],part=parts.find(p=>p.inlineData?.data||p.inline_data?.data),inline=part?.inlineData||part?.inline_data;
+    if(r.ok&&inline?.data)return res.json({ok:true,provider:"gemini",model,mimeType:inline.mimeType||inline.mime_type||"image/png",image:inline.data,fallbackFrom:"cloudflare"});
+    const geminiError=(data?.error?.message||("HTTP "+r.status)).slice(0,500);return res.status(502).json({error:"image_providers_failed",details:"Cloudflare: "+cloudflareError+" | Gemini: "+geminiError});
+  }catch(e){return res.status(502).json({error:"image_providers_failed",details:"Cloudflare: "+cloudflareError+" | Gemini: "+e.message})}
+  return res.status(503).json({error:"image_providers_failed",details:"Cloudflare: "+cloudflareError+" | Gemini: not configured"});
 });
 
 app.post("/api/ai/visual-plan",async(req,res)=>{
