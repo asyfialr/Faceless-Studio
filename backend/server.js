@@ -704,7 +704,16 @@ function autopilotRetryDelayMs(message){
   return Math.max(60000,Math.ceil(ms));
 }
 async function runAutopilotVoiceWorker(){
-  const store=await readAutopilotJobs(),now=Date.now(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete"&&(!j.voiceRetryAt||Date.parse(j.voiceRetryAt)<=now));if(!job)return null;
+  const store=await readAutopilotJobs(),now=Date.now();
+  for(const failed of store.jobs||[]){
+    if(failed.stage!=="voice-error"||failed.status!=="voice-failed")continue;
+    const message=String(failed.error||""),delay=autopilotRetryDelayMs(message),rateLimited=/rate limit|quota|resource exhausted|too many requests/i.test(message);
+    if(!rateLimited)continue;
+    failed.status="script-complete";failed.stage="awaiting-voice";failed.voiceRateLimited=true;failed.voiceRetryAt=new Date(Date.now()+(delay||60*60*1000)+30000).toISOString();failed.updatedAt=new Date().toISOString();
+    console.warn("[autopilot] migrated legacy voice rate-limit failure",failed.id,failed.voiceRetryAt);
+    await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  }
+  const job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete"&&(!j.voiceRetryAt||Date.parse(j.voiceRetryAt)<=now));if(!job)return null;
   job.status="running";job.stage="voice-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVoice(meta.narration);await writeFile(join(dir,"voice.wav"),out.audio);
