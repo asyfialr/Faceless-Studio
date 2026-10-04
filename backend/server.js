@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import ffmpegPath from "ffmpeg-static";
 import sharp from "sharp";
-import {createCanvas,GlobalFonts} from "@napi-rs/canvas";
+import {createCanvas,GlobalFonts,loadImage} from "@napi-rs/canvas";
 import {spawn} from "node:child_process";
 import {mkdtemp,writeFile,readFile,rm,mkdir,stat} from "node:fs/promises";
 import {tmpdir} from "node:os";
