@@ -36,3 +36,7 @@
 .autopilot-topic-panel{border-top:1px solid rgba(255,255,255,.1);padding-top:12px;display:grid;gap:9px}
 .autopilot-topic-panel textarea{width:100%;resize:vertical}
 #autopilotTopics{display:grid;gap:7px}
+
+.autopilot-job-row{display:grid;gap:6px}
+.autopilot-job-error{font-size:11px;line-height:1.45;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:9px;overflow-wrap:anywhere}
+.autopilot-job-row .retry-visual-plan{justify-self:start}
