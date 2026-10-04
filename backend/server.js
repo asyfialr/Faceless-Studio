@@ -696,14 +696,28 @@ async function generateAutopilotVoice(text){
   const model=process.env.GEMINI_TTS_MODEL||"gemini-3.8-flash-lite-tts",r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"x-goog-api-key":geminiKey,"Content-Type":"application/json"},body:JSON.stringify({model,input:[{type:"user_input",content:[{type:"text",text:String(text||"").slice(0,4000),annotations:[{type:"speech_metadata",style:"Natural confident American English YouTube documentary narration. Clear, warm, engaging, medium pace."}]}]}],response_format:{type:"audio"},generation_config:{speech_config:[{voice:"Kore"}]}})}),data=await r.json();
   if(!r.ok)throw new Error(data?.error?.message||"Gemini TTS request failed");const audio=data?.steps?.flatMap(step=>step?.content||[]).filter(item=>item?.type==="audio"&&item?.data).at(-1)?.data;if(!audio)throw new Error("Gemini TTS returned no audio");return {model,audio:Buffer.from(audio,"base64")};
 }
+function autopilotRetryDelayMs(message){
+  const s=String(message||"");
+  let m=s.match(/retry\s+in\s+(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/i);
+  if(!m)return 0;
+  const ms=((Number(m[1]||0)*3600)+(Number(m[2]||0)*60)+Number(m[3]||0))*1000;
+  return Math.max(60000,Math.ceil(ms));
+}
 async function runAutopilotVoiceWorker(){
-  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete");if(!job)return null;
+  const store=await readAutopilotJobs(),now=Date.now(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete"&&(!j.voiceRetryAt||Date.parse(j.voiceRetryAt)<=now));if(!job)return null;
   job.status="running";job.stage="voice-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVoice(meta.narration);await writeFile(join(dir,"voice.wav"),out.audio);
     meta.voiceStored=true;meta.voiceUrl="/media/"+job.projectId+"/voice.wav";meta.voiceModel=out.model;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));
-    job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
-  }catch(e){job.status="voice-failed";job.stage="voice-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] voice failed",job.id,job.error);return job}
+    job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;delete job.voiceRetryAt;delete job.voiceRateLimited;delete job.error;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
+  }catch(e){
+    const message=String(e.message||e),delay=autopilotRetryDelayMs(message),rateLimited=/rate limit|quota|resource exhausted|too many requests/i.test(message);
+    if(rateLimited){
+      job.status="script-complete";job.stage="awaiting-voice";job.voiceRateLimited=true;job.voiceRetryAt=new Date(Date.now()+(delay||60*60*1000)+30000).toISOString();job.error=message;job.updatedAt=new Date().toISOString();
+      await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.warn("[autopilot] voice rate limited; retry scheduled",job.id,job.voiceRetryAt);return job;
+    }
+    job.status="voice-failed";job.stage="voice-error";job.error=message;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] voice failed",job.id,job.error);return job;
+  }
 }
 async function generateAutopilotVisualPlan(title,narration){
   const key=process.env.GEMINI_API_KEY;if(!key)throw new Error("GEMINI_API_KEY not configured");
