@@ -296,7 +296,14 @@ async function addAutopilotTopics(){
   var input=document.getElementById("autopilotTopicInput"),btn=document.getElementById("addAutopilotTopics"),topics=(input?.value||"").split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);if(!topics.length)return;btn.disabled=true;btn.textContent="Adding…";
   try{var r=await fetch(API_BASE+"/api/autopilot/topics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topics:topics})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Could not add topics");input.value="";await refreshAutopilotEngine()}catch(e){alert("Topic queue failed: "+e.message)}finally{btn.disabled=false;btn.textContent="Add Topics to Queue"}
 }
+async function runNextAutopilotTopic(){
+  var btn=document.getElementById("runNextAutopilotTopic"),status=document.getElementById("runNextAutopilotStatus");if(!btn)return;btn.disabled=true;btn.textContent="Starting…";if(status)status.textContent="Assigning the next queued topic…";
+  try{var r=await fetch(API_BASE+"/api/autopilot/run-next",{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Could not start queued topic");if(status)status.textContent="Started ✓ "+(d.topic?.title||"queued topic")+" • normal autonomous pipeline";await refreshAutopilotEngine()}
+  catch(e){if(status)status.textContent="Could not start: "+e.message}
+  finally{btn.disabled=false;btn.textContent="Run Next Queued Topic"}
+}
 var addAutopilotTopicsButton=document.getElementById("addAutopilotTopics");if(addAutopilotTopicsButton)addAutopilotTopicsButton.onclick=function(e){e.preventDefault();addAutopilotTopics()};
+var runNextAutopilotButton=document.getElementById("runNextAutopilotTopic");if(runNextAutopilotButton)runNextAutopilotButton.onclick=function(e){e.preventDefault();runNextAutopilotTopic()};
 var dryRunButton=document.getElementById("runAutopilotDryRun");if(dryRunButton)dryRunButton.onclick=function(e){e.preventDefault();runAutopilotDryRun()};
 refreshAutopilotEngine();
 setInterval(function(){if(location.hash==="#scheduler")refreshAutopilotEngine()},30000);
