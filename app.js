@@ -293,7 +293,7 @@ async function runAutopilotDryRun(){
   try{var r=await fetch(API_BASE+"/api/autopilot/engine/dry-run",{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.error||"Dry run failed");status.textContent=d.due?(d.recorded?"Due ✓ Dry-run slot recorded. No production started.":"Due slot already locked. No duplicate run."):"Not due • "+d.local.day+" "+d.local.date+" "+d.local.time+" vs "+d.config.time;await refreshAutopilotEngine()}catch(e){status.textContent="Dry run failed: "+e.message}finally{btn.disabled=false;btn.textContent="Run Dry Check"}
 }
 async function addAutopilotTopics(){
-  var input=document.getElementById("autopilotTopicInput"),btn=document.getElementById("addAutopilotTopics"),topics=(input?.value||"").split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);if(!topics.length)return;btn.disabled=true;btn.textContent="Adding…";
+  var input=document.getElementById("autopilotTopicInput"),btn=document.getElementById("addAutopilotTopics"),topics=(input?.value||"").split(/[,\n]+/).map(function(x){return x.trim()}).filter(Boolean);if(!topics.length)return;btn.disabled=true;btn.textContent="Adding…";
   try{var r=await fetch(API_BASE+"/api/autopilot/topics",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topics:topics})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Could not add topics");input.value="";await refreshAutopilotEngine()}catch(e){alert("Topic queue failed: "+e.message)}finally{btn.disabled=false;btn.textContent="Add Topics to Queue"}
 }
 async function runNextAutopilotTopic(){
