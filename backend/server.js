@@ -565,7 +565,7 @@ app.post("/api/projects/:id/checkpoint",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
   try{
     const dir=join(storageRoot,id),path=join(dir,"project.json");await mkdir(dir,{recursive:true});let meta={id};try{meta=JSON.parse(await readFile(path,"utf8"))}catch(e){}
-    const body=req.body||{},allowed=["title","narration","visualPlan","metadata","scriptReady","productionReady","renderReady","shortsReady","captionTimingReady","captionsReady","reviewApproved","scheduleReady"];
+    const body=req.body||{},allowed=["title","narration","visualPlan","metadata","scriptReady","productionReady","renderReady","shortsReady","captionTimingReady","captionsReady","reviewApproved","scheduleReady","archived","archivedAt"];
     for(const key of allowed)if(Object.prototype.hasOwnProperty.call(body,key))meta[key]=body[key];
     meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));res.json({ok:true,project:meta});
   }catch(e){res.status(500).json({error:"checkpoint_save_failed",message:e.message})}
@@ -576,10 +576,15 @@ app.get("/api/projects",async(req,res)=>{
     for(const entry of entries){if(!entry.isDirectory())continue;try{
       const meta=JSON.parse(await readFile(join(storageRoot,entry.name,"project.json"),"utf8")),yt=meta.youtube||{},reality=yt.realityCheck||{};
       const stages=[!!(meta.scriptReady||meta.narration),!!meta.voiceStored,!!(Array.isArray(meta.visualPlan)&&meta.visualPlan.length),!!meta.productionReady,!!meta.renderReady,!!meta.shortsReady,!!meta.captionTimingReady,!!meta.captionsReady,!!meta.metadata],done=stages.filter(Boolean).length;
-      projects.push({id:meta.id||entry.name,title:meta.title||"Untitled project",updatedAt:meta.updatedAt||meta.createdAt||null,progress:Math.round(done/stages.length*100),productionReady:!!(meta.captionsReady&&meta.metadata),youtubeVerified:reality.ready===true,thumbnailVerified:reality.thumbnailOk===true,schedule:Array.isArray(yt.schedule)?yt.schedule:[],longVideoId:yt.longVideoId||null,shortCount:(yt.shorts||[]).filter(x=>x?.videoId).length});
+      projects.push({id:meta.id||entry.name,title:meta.title||"Untitled project",updatedAt:meta.updatedAt||meta.createdAt||null,progress:Math.round(done/stages.length*100),productionReady:!!(meta.captionsReady&&meta.metadata),youtubeVerified:reality.ready===true,thumbnailVerified:reality.thumbnailOk===true,schedule:Array.isArray(yt.schedule)?yt.schedule:[],longVideoId:yt.longVideoId||null,shortCount:(yt.shorts||[]).filter(x=>x?.videoId).length,archived:meta.archived===true,attention:reality.ready===true?null:(!meta.renderReady?"Render incomplete":(!meta.shortsReady?"Shorts incomplete":(!meta.captionsReady?"Captions incomplete":(!meta.metadata?"Metadata incomplete":(!yt.longVideoId?"YouTube Long missing":((yt.shorts||[]).filter(x=>x?.videoId).length<3?"YouTube Shorts incomplete":(!reality.thumbnailOk?"Thumbnail not verified":"YouTube verification pending"))))))});
     }catch(e){}}
     projects.sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));res.json({ok:true,projects});
   }catch(e){res.status(500).json({error:"projects_list_failed",message:e.message})}
+});
+app.post("/api/projects/:id/archive",async(req,res)=>{
+  const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
+  try{const path=join(storageRoot,id,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),archived=req.body?.archived!==false;meta.archived=archived;meta.archivedAt=archived?new Date().toISOString():null;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));res.json({ok:true,archived,project:meta})}
+  catch(e){res.status(404).json({error:"project_not_found",message:e.message})}
 });
 app.get("/api/projects/:id",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");
