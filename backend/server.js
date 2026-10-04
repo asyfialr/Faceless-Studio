@@ -635,6 +635,7 @@ app.post("/api/autopilot/engine/dry-run",async(req,res)=>{try{res.json(await eva
 app.get("/api/autopilot/history",async(req,res)=>{try{res.json(await readAutopilotHistory())}catch(e){res.status(500).json({error:"autopilot_history_failed",message:e.message})}});
 const autopilotTopicsPath=join(storageRoot,"autopilot-topics.json");
 async function readAutopilotTopics(){try{return JSON.parse(await readFile(autopilotTopicsPath,"utf8"))}catch(e){return {topics:[]}}}
+function nextQueuedAutopilotTopic(store){return [...(store.topics||[])].filter(x=>x.status==="queued").sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.id||"").localeCompare(String(b.id||"")))[0]||null}
 app.get("/api/autopilot/topics",async(req,res)=>{try{res.json(await readAutopilotTopics())}catch(e){res.status(500).json({error:"autopilot_topics_failed",message:e.message})}});
 app.post("/api/autopilot/topics",async(req,res)=>{
   try{const incoming=Array.isArray(req.body?.topics)?req.body.topics:[],clean=incoming.map(x=>String(x||"").trim()).filter(Boolean).slice(0,50),store=await readAutopilotTopics();store.topics=[...(store.topics||[]),...clean.map(title=>({id:crypto.randomUUID(),title,status:"queued",createdAt:new Date().toISOString()}))].slice(-100);await writeFile(autopilotTopicsPath,JSON.stringify(store,null,2));res.json({ok:true,topics:store.topics})}
@@ -642,17 +643,23 @@ app.post("/api/autopilot/topics",async(req,res)=>{
 });
 const autopilotJobsPath=join(storageRoot,"autopilot-jobs.json");
 async function readAutopilotJobs(){try{return JSON.parse(await readFile(autopilotJobsPath,"utf8"))}catch(e){return {jobs:[]}}}
+async function cleanupAutopilotPlaceholders(store){
+  const before=(store.jobs||[]).length;
+  store.jobs=(store.jobs||[]).filter(j=>!(!j.title&&!j.topicId&&!j.projectId&&j.status==="queued-safe"&&j.stage==="awaiting-backend-pipeline"));
+  if(store.jobs.length!==before)await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  return store;
+}
 async function createAutopilotProductionJob(result){
   const store=await readAutopilotJobs();if((store.jobs||[]).some(j=>j.slot===result.slot))return null;
-  const topics=await readAutopilotTopics(),topic=(topics.topics||[]).find(x=>x.status==="queued");const job={id:crypto.randomUUID(),slot:result.slot,status:topic?"queued-safe":"waiting-topic",stage:topic?"script-ready":"awaiting-topic",topicId:topic?.id||null,title:topic?.title||null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),timeZone:result.config.timeZone,shortIntervalDays:result.config.shortIntervalDays,autoPublish:false,safety:"NO_UPLOAD"};if(topic){topic.status="assigned";topic.assignedJobId=job.id;topic.assignedAt=new Date().toISOString();await writeFile(autopilotTopicsPath,JSON.stringify(topics,null,2))}
+  const topics=await readAutopilotTopics(),topic=nextQueuedAutopilotTopic(topics);const job={id:crypto.randomUUID(),slot:result.slot,status:topic?"queued-safe":"waiting-topic",stage:topic?"script-ready":"awaiting-topic",topicId:topic?.id||null,title:topic?.title||null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),timeZone:result.config.timeZone,shortIntervalDays:result.config.shortIntervalDays,autoPublish:false,safety:"NO_UPLOAD"};if(topic){topic.status="assigned";topic.assignedJobId=job.id;topic.assignedAt=new Date().toISOString();await writeFile(autopilotTopicsPath,JSON.stringify(topics,null,2))}
   store.jobs=[job,...(store.jobs||[])].slice(0,100);await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));return job;
 }
-app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await readAutopilotJobs())}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
+app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await cleanupAutopilotPlaceholders(await readAutopilotJobs()))}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
 app.post("/api/autopilot/run-next",async(req,res)=>{
   try{
     const jobs=await readAutopilotJobs(),active=(jobs.jobs||[]).find(j=>(j.title||j.topicId||j.projectId)&&!["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"].includes(String(j.stage||""))&&!["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"].includes(String(j.status||"")));
     if(active)return res.status(409).json({error:"autopilot_busy",message:"An autopilot production job is already active.",job:active});
-    const topics=await readAutopilotTopics(),topic=(topics.topics||[]).find(x=>x.status==="queued");if(!topic)return res.status(409).json({error:"no_queued_topic",message:"No queued topic is available."});
+    const topics=await readAutopilotTopics(),topic=nextQueuedAutopilotTopic(topics);if(!topic)return res.status(409).json({error:"no_queued_topic",message:"No queued topic is available."});
     let config;try{config=JSON.parse(await readFile(autopilotConfigPath,"utf8"))}catch{config={enabled:false,days:[],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1}}const now=new Date(),local=autopilotLocalParts(now,config.timeZone||"America/New_York"),result={slot:"manual-"+now.toISOString(),config,local,recorded:{id:crypto.randomUUID(),slot:"manual-"+now.toISOString(),status:"manual-repeatability-test",source:"manual"}};
     const job=await createAutopilotProductionJob(result);if(!job)throw new Error("Could not create repeatability test job");
     res.json({ok:true,job,topic:{id:topic.id,title:topic.title},message:"Queued topic assigned to the normal autonomous pipeline."});
