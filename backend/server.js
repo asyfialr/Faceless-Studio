@@ -666,10 +666,24 @@ async function runAutopilotScriptWorker(){
     console.log("[autopilot] script complete",job.id,projectId);return job;
   }catch(e){job.status="script-failed";job.stage="script-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] script failed",job.id,job.error);return job}
 }
+async function generateAutopilotVoice(text){
+  const geminiKey=process.env.GEMINI_API_KEY;if(!geminiKey)throw new Error("GEMINI_API_KEY not configured");
+  const model=process.env.GEMINI_TTS_MODEL||"gemini-3.8-flash-lite-tts",r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"x-goog-api-key":geminiKey,"Content-Type":"application/json"},body:JSON.stringify({model,input:[{type:"user_input",content:[{type:"text",text:String(text||"").slice(0,4000),annotations:[{type:"speech_metadata",style:"Natural confident American English YouTube documentary narration. Clear, warm, engaging, medium pace."}]}]}],response_format:{type:"audio"},generation_config:{speech_config:[{voice:"Kore"}]}})}),data=await r.json();
+  if(!r.ok)throw new Error(data?.error?.message||"Gemini TTS request failed");const audio=data?.steps?.flatMap(step=>step?.content||[]).filter(item=>item?.type==="audio"&&item?.data).at(-1)?.data;if(!audio)throw new Error("Gemini TTS returned no audio");return {model,audio:Buffer.from(audio,"base64")};
+}
+async function runAutopilotVoiceWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete");if(!job)return null;
+  job.status="running";job.stage="voice-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVoice(meta.narration);await writeFile(join(dir,"voice.wav"),out.audio);
+    meta.voiceStored=true;meta.voiceUrl="/media/"+job.projectId+"/voice.wav";meta.voiceModel=out.model;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));
+    job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
+  }catch(e){job.status="voice-failed";job.stage="voice-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] voice failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
