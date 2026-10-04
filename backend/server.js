@@ -602,4 +602,18 @@ app.get("/api/projects/:id",async(req,res)=>{
   catch(e){res.status(404).json({error:"project_not_found"})}
 });
 
+app.get("/api/autopilot/config",async(req,res)=>{
+  try{const raw=await readFile(join(storageRoot,"autopilot-config.json"),"utf8");res.json(JSON.parse(raw))}
+  catch(e){res.json({enabled:false,days:["MON","WED","FRI"],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1,updatedAt:null})}
+});
+app.post("/api/autopilot/config",async(req,res)=>{
+  try{
+    const allowedDays=["SUN","MON","TUE","WED","THU","FRI","SAT"],days=Array.isArray(req.body?.days)?req.body.days.filter(x=>allowedDays.includes(x)):[];
+    const time=/^([01]\d|2[0-3]):[0-5]\d$/.test(String(req.body?.time||""))?String(req.body.time):"19:00";
+    const zones=["America/New_York","America/Chicago","America/Denver","America/Los_Angeles"],timeZone=zones.includes(req.body?.timeZone)?req.body.timeZone:"America/New_York";
+    const shortIntervalDays=Math.max(1,Math.min(3,Number(req.body?.shortIntervalDays)||1));
+    const config={enabled:req.body?.enabled===true,days,time,timeZone,shortIntervalDays,updatedAt:new Date().toISOString(),mode:"config-only"};
+    await writeFile(join(storageRoot,"autopilot-config.json"),JSON.stringify(config,null,2));res.json({ok:true,config});
+  }catch(e){res.status(500).json({error:"autopilot_config_failed",message:e.message})}
+});
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
