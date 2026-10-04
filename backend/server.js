@@ -366,9 +366,24 @@ app.post("/api/youtube/upload-long",async(req,res)=>{
     const data=await readFile(filePath);const put=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"video/mp4","Content-Length":String(data.length)},body:data});const result=await put.json().catch(()=>({}));
     if(!put.ok)throw new Error("YouTube upload "+put.status+" "+JSON.stringify(result).slice(0,500));
     let thumbnailApplied=false;try{const thumb=await readFile(join(projectDir,"thumbnail.jpg"));const tr=await fetch("https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId="+encodeURIComponent(result.id)+"&uploadType=media",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"image/jpeg","Content-Length":String(thumb.length)},body:thumb});thumbnailApplied=tr.ok;if(!tr.ok)console.warn("YouTube thumbnail set failed",tr.status,(await tr.text()).slice(0,300))}catch(e){console.warn("YouTube thumbnail unavailable",e.message)}
-    const metaPath=join(projectDir,"project.json");let project={id:projectId};try{project=JSON.parse(await readFile(metaPath,"utf8"))}catch{}project.youtube={...(project.youtube||{}),longVideoId:result.id,privacyStatus:"private",uploadedAt:new Date().toISOString()};await writeFile(metaPath,JSON.stringify(project,null,2));
+    const metaPath=join(projectDir,"project.json");let project={id:projectId};try{project=JSON.parse(await readFile(metaPath,"utf8"))}catch{}project.youtube={...(project.youtube||{}),longVideoId:result.id,privacyStatus:"private",uploadedAt:new Date().toISOString(),thumbnailApplied,thumbnailVideoId:thumbnailApplied?result.id:null};await writeFile(metaPath,JSON.stringify(project,null,2));
     res.json({ok:true,videoId:result.id,url:"https://www.youtube.com/watch?v="+result.id,privacyStatus:"private",thumbnailApplied});
   }catch(e){console.error("YouTube long upload failed",e);res.status(500).json({error:e.message||"YouTube upload failed"})}
+});
+
+
+app.post("/api/youtube/apply-thumbnail",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!projectId)return res.status(400).json({error:"projectId required"});
+    const projectDir=join(storageRoot,projectId),metaPath=join(projectDir,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),videoId=project.youtube?.longVideoId;
+    if(!videoId)return res.status(409).json({error:"Long YouTube video is missing"});
+    const thumbPath=join(projectDir,"thumbnail.jpg"),info=await stat(thumbPath);if(info.size>2*1024*1024)return res.status(400).json({error:"Thumbnail exceeds YouTube 2 MB limit"});
+    const thumb=await readFile(thumbPath),token=await youtubeAccessToken();
+    const tr=await fetch("https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId="+encodeURIComponent(videoId)+"&uploadType=media",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"image/jpeg","Content-Length":String(thumb.length)},body:thumb});
+    const td=await tr.json().catch(()=>({}));if(!tr.ok)throw new Error("YouTube thumbnail "+tr.status+" "+JSON.stringify(td).slice(0,500));
+    project.youtube.thumbnailApplied=true;project.youtube.thumbnailAppliedAt=new Date().toISOString();project.youtube.thumbnailVideoId=videoId;await writeFile(metaPath,JSON.stringify(project,null,2));
+    res.json({ok:true,videoId,thumbnailApplied:true});
+  }catch(e){console.error("YouTube thumbnail apply failed",e);res.status(500).json({error:e.message||"YouTube thumbnail apply failed"})}
 });
 
 app.post("/api/youtube/upload-short",async(req,res)=>{
