@@ -280,7 +280,19 @@ async function saveAutopilotPlan(){
   try{var payload={enabled:document.getElementById("autopilotPlanEnabled").checked,days:days,time:document.getElementById("autopilotPlanTime").value,timeZone:document.getElementById("autopilotPlanTimezone").value,shortIntervalDays:Number(document.getElementById("autopilotPlanInterval").value)},r=await fetch(API_BASE+"/api/autopilot/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json();if(!r.ok)throw new Error(d.error||"Save failed");status.textContent=(d.config.enabled?"Plan enabled ✓":"Plan saved • disabled")+" • "+d.config.days.join(", ")+" "+d.config.time+" "+d.config.timeZone+" • config-only safety mode";btn.textContent="Save Autopilot Plan"}catch(e){status.textContent="Save failed: "+e.message;btn.textContent="Retry Save"}finally{btn.disabled=false}
 }
 var saveAutopilotPlanButton=document.getElementById("saveAutopilotPlan");if(saveAutopilotPlanButton)saveAutopilotPlanButton.onclick=function(e){e.preventDefault();saveAutopilotPlan()};
-loadAutopilotPlan();
+loadAutopilotPlan();async function refreshAutopilotEngine(){
+  var state=document.getElementById("autopilotEngineState"),status=document.getElementById("autopilotEngineStatus"),history=document.getElementById("autopilotRunHistory");if(!state)return;
+  try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),e=await er.json();if(!er.ok)throw new Error(e.error||"Engine unavailable");state.textContent=!e.enabled?"Engine armed • plan disabled":e.due?"Due now ✓":"Engine armed • waiting";status.textContent="Local scheduler: "+e.local.day+" "+e.local.date+" "+e.local.time+" • target "+e.config.time+" "+e.config.timeZone+" • dry-run only";
+    var hr=await fetch(API_BASE+"/api/autopilot/history",{cache:"no-store"}),h=await hr.json(),runs=h.runs||[];history.innerHTML=runs.length?runs.slice(0,5).map(function(x){return '<div class="autopilot-history-row"><strong>'+escapeHtml(x.status)+'</strong><span>'+escapeHtml(x.slot)+'</span></div>'}).join(""):'<span class="muted">No dry runs recorded yet.</span>';
+  }catch(err){state.textContent="Engine unavailable";status.textContent=err.message}
+}
+async function runAutopilotDryRun(){
+  var btn=document.getElementById("runAutopilotDryRun"),status=document.getElementById("autopilotEngineStatus");btn.disabled=true;btn.textContent="Checking…";
+  try{var r=await fetch(API_BASE+"/api/autopilot/engine/dry-run",{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.error||"Dry run failed");status.textContent=d.due?(d.recorded?"Due ✓ Dry-run slot recorded. No production started.":"Due slot already locked. No duplicate run."):"Not due • "+d.local.day+" "+d.local.date+" "+d.local.time+" vs "+d.config.time;await refreshAutopilotEngine()}catch(e){status.textContent="Dry run failed: "+e.message}finally{btn.disabled=false;btn.textContent="Run Dry Check"}
+}
+var dryRunButton=document.getElementById("runAutopilotDryRun");if(dryRunButton)dryRunButton.onclick=function(e){e.preventDefault();runAutopilotDryRun()};
+refreshAutopilotEngine();
+
 syncHash();
 async function restorePersistentProject(){
   var id=localStorage.getItem("activeProjectId");if(!id)return;
