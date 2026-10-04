@@ -815,10 +815,16 @@ async function recoverInterruptedAutopilotJobs(){
   const store=await readAutopilotJobs();let changed=false;
   for(const job of store.jobs||[]){
     if(job.status!=="running")continue;
-    const stage=String(job.stage||"");
-    if(stage==="script-generating"){job.status="queued";job.stage="awaiting-script"}
-    else if(stage==="voice-generating"){job.status="script-complete";job.stage="awaiting-voice"}
-    else if(stage==="visual-plan-generating"){job.status="voice-complete";job.stage="awaiting-visual-plan"}
+    const stage=String(job.stage||""),projectDir=job.projectId?join(storageRoot,job.projectId):null;
+    if(stage==="script-generating"){job.status="queued-safe";job.stage="script-ready"}
+    else if(stage==="voice-generating"){
+      let voiceReady=false;try{await stat(join(projectDir,"voice.wav"));voiceReady=true}catch{}
+      job.status=voiceReady?"voice-complete":"script-complete";job.stage=voiceReady?"awaiting-visual-plan":"awaiting-voice";
+    }
+    else if(stage==="visual-plan-generating"){
+      let planReady=false;try{const meta=JSON.parse(await readFile(join(projectDir,"project.json"),"utf8"));planReady=Array.isArray(meta.visualPlan)&&meta.visualPlan.length>0}catch{}
+      job.status=planReady?"visual-plan-complete":"voice-complete";job.stage=planReady?"awaiting-visuals":"awaiting-visual-plan";
+    }
     else if(stage==="visuals-generating"){job.status="visual-plan-complete";job.stage="awaiting-visuals"}
     else if(stage==="long-rendering"){job.status="visuals-complete";job.stage="awaiting-long-render"}
     else if(stage==="shorts-rendering"){job.status="long-render-complete";job.stage="awaiting-shorts"}
@@ -828,7 +834,7 @@ async function recoverInterruptedAutopilotJobs(){
     else continue;
     job.recoveredFrom=stage;job.recoveredAt=new Date().toISOString();job.updatedAt=job.recoveredAt;delete job.error;changed=true;
   }
-  if(changed){await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] recovered interrupted jobs")}
+  if(changed){await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] recovered interrupted jobs safely")}
   return changed;
 }
 let autopilotTimerBusy=false;
