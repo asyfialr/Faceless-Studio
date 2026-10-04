@@ -827,9 +827,30 @@ async function recoverInterruptedAutopilotJobs(){
   return changed;
 }
 let autopilotTimerBusy=false;
+const autopilotTerminalStages=new Set(["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"]);
+const autopilotTerminalStatuses=new Set(["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"]);
+function isAutopilotJobActive(job){
+  return Boolean(job&&(job.title||job.topicId||job.projectId)&&!autopilotTerminalStages.has(String(job.stage||""))&&!autopilotTerminalStatuses.has(String(job.status||"")));
+}
+async function claimNextQueuedTopicAutomatically(){
+  const jobs=await cleanupAutopilotPlaceholders(await readAutopilotJobs());
+  if((jobs.jobs||[]).some(isAutopilotJobActive))return null;
+  const topics=await readAutopilotTopics(),topic=nextQueuedAutopilotTopic(topics);
+  if(!topic)return null;
+  let config;try{config=JSON.parse(await readFile(autopilotConfigPath,"utf8"))}catch{config={enabled:false,days:[],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1}}
+  const now=new Date(),local=autopilotLocalParts(now,config.timeZone||"America/New_York"),slot="queue-"+now.toISOString();
+  const job=await createAutopilotProductionJob({slot,config,local,recorded:{id:crypto.randomUUID(),slot,status:"queue-auto",source:"queue-runner"}});
+  if(job)console.log("[autopilot] queue runner claimed",topic.title,job.id);
+  return job;
+}
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker()}
+  try{
+    const result=await evaluateAutopilot(new Date(),true,"automatic");
+    if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}
+    await claimNextQueuedTopicAutomatically();
+    await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
+  }
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
