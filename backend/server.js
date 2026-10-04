@@ -432,9 +432,9 @@ app.post("/api/youtube/schedule-project",async(req,res)=>{
     if(!projectId||(!longAt&&(!scheduleDate||!scheduleTime)))return res.status(400).json({error:"projectId and schedule date/time required"});
     let base;if(scheduleDate&&scheduleTime){try{base=zonedLocalToUtc(scheduleDate,scheduleTime,timeZone)}catch(e){return res.status(400).json({error:e.message})}}else base=new Date(longAt);if(!Number.isFinite(base.getTime())||base.getTime()<=Date.now()+60000)return res.status(400).json({error:"Schedule time must be in the future"});
     const metaPath=join(storageRoot,projectId,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),yt=project.youtube||{};
-    const entries=[];if(yt.longVideoId)entries.push({type:"long",id:yt.longVideoId,at:new Date(base)});
-    (yt.shorts||[]).forEach((x,i)=>{if(x?.videoId){const at=new Date(base);at.setUTCDate(at.getUTCDate()+(i+1)*intervalDays);entries.push({type:"short"+(i+1),id:x.videoId,at})}});
-    if(!entries.length)return res.status(400).json({error:"No uploaded YouTube videos found"});
+    const missingUploads=[];if(!yt.longVideoId)missingUploads.push("long");for(let i=0;i<3;i++)if(!yt.shorts?.[i]?.videoId)missingUploads.push("short"+(i+1));if(missingUploads.length)return res.status(409).json({error:"Auto Publish incomplete. Missing YouTube upload: "+missingUploads.join(", ")+". Upload/retry missing items before scheduling.",missing:missingUploads});
+    const entries=[{type:"long",id:yt.longVideoId,at:new Date(base)}];
+    yt.shorts.slice(0,3).forEach((x,i)=>{const at=new Date(base);at.setUTCDate(at.getUTCDate()+(i+1)*intervalDays);entries.push({type:"short"+(i+1),id:x.videoId,at})});
     const token=await youtubeAccessToken(),scheduled=[],missing=[];
     for(const item of entries){if(!(await youtubeVideoExists(item.id,token))){missing.push(item.type);continue}
       const publishAt=item.at.toISOString();const r=await fetch("https://www.googleapis.com/youtube/v3/videos?part=status",{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({id:item.id,status:{privacyStatus:"private",publishAt,selfDeclaredMadeForKids:false}})});
