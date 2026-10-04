@@ -650,7 +650,7 @@ async function createAutopilotProductionJob(result){
 app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await readAutopilotJobs())}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
 app.post("/api/autopilot/run-next",async(req,res)=>{
   try{
-    const jobs=await readAutopilotJobs(),active=(jobs.jobs||[]).find(j=>!["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"].includes(String(j.stage||""))&&!["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"].includes(String(j.status||"")));
+    const jobs=await readAutopilotJobs(),active=(jobs.jobs||[]).find(j=>(j.title||j.topicId||j.projectId)&&!["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"].includes(String(j.stage||""))&&!["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"].includes(String(j.status||"")));
     if(active)return res.status(409).json({error:"autopilot_busy",message:"An autopilot production job is already active.",job:active});
     const topics=await readAutopilotTopics(),topic=(topics.topics||[]).find(x=>x.status==="queued");if(!topic)return res.status(409).json({error:"no_queued_topic",message:"No queued topic is available."});
     const config=await readAutopilotConfig(),now=new Date(),local=autopilotLocalParts(now,config.timeZone||"America/New_York"),result={slot:"manual-"+now.toISOString(),config,local,recorded:{id:crypto.randomUUID(),slot:"manual-"+now.toISOString(),status:"manual-repeatability-test",source:"manual"}};
