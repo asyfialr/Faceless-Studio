@@ -265,6 +265,22 @@ $("previewRegenerate").onclick=function(){
 selectPreview(0);
 
 const API_BASE="https://faceless-studio-production-c487.up.railway.app";
+async function loadAutopilotPlan(){
+  var status=document.getElementById("autopilotPlanStatus");if(!status)return;
+  try{var r=await fetch(API_BASE+"/api/autopilot/config",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.error||"Could not load plan");
+    document.getElementById("autopilotPlanEnabled").checked=d.enabled===true;document.getElementById("autopilotPlanTime").value=d.time||"19:00";document.getElementById("autopilotPlanTimezone").value=d.timeZone||"America/New_York";document.getElementById("autopilotPlanInterval").value=String(d.shortIntervalDays||1);
+    document.querySelectorAll(".autopilot-days input").forEach(function(x){x.checked=(d.days||[]).includes(x.value)});
+    status.textContent=(d.enabled?"Plan enabled ✓":"Plan saved • disabled")+" • config-only safety mode";
+  }catch(e){status.textContent="Autopilot plan unavailable: "+e.message}
+}
+async function saveAutopilotPlan(){
+  var btn=document.getElementById("saveAutopilotPlan"),status=document.getElementById("autopilotPlanStatus"),days=Array.from(document.querySelectorAll(".autopilot-days input:checked")).map(function(x){return x.value});
+  if(!days.length){status.textContent="Select at least one production day.";return}
+  btn.disabled=true;btn.textContent="Saving…";
+  try{var payload={enabled:document.getElementById("autopilotPlanEnabled").checked,days:days,time:document.getElementById("autopilotPlanTime").value,timeZone:document.getElementById("autopilotPlanTimezone").value,shortIntervalDays:Number(document.getElementById("autopilotPlanInterval").value)},r=await fetch(API_BASE+"/api/autopilot/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json();if(!r.ok)throw new Error(d.error||"Save failed");status.textContent=(d.config.enabled?"Plan enabled ✓":"Plan saved • disabled")+" • "+d.config.days.join(", ")+" "+d.config.time+" "+d.config.timeZone+" • config-only safety mode";btn.textContent="Save Autopilot Plan"}catch(e){status.textContent="Save failed: "+e.message;btn.textContent="Retry Save"}finally{btn.disabled=false}
+}
+var saveAutopilotPlanButton=document.getElementById("saveAutopilotPlan");if(saveAutopilotPlanButton)saveAutopilotPlanButton.onclick=function(e){e.preventDefault();saveAutopilotPlan()};
+loadAutopilotPlan();
 syncHash();
 async function restorePersistentProject(){
   var id=localStorage.getItem("activeProjectId");if(!id)return;
