@@ -766,10 +766,33 @@ async function runAutopilotMetadataThumbnailWorker(){
     job.status="production-complete";job.stage="awaiting-youtube";job.metadataReady=true;job.thumbnailReady=true;job.thumbnailProvider=thumb.provider||"unknown";job.thumbnailFrameSecond=thumb.frameSecond??null;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] production complete",job.id);return job
   }catch(e){job.status="metadata-thumbnail-failed";job.stage="production-finalize-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] metadata/thumbnail failed",job.id,job.error);return job}
 }
+async function nextAutopilotPublishSlot(){
+  let config;try{config=JSON.parse(await readFile(autopilotConfigPath,"utf8"))}catch{config={days:["SUN"],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1}}
+  const days=(config.days||[]).length?config.days:["SUN"],tz=config.timeZone||"America/New_York",time=config.time||"19:00",now=Date.now();
+  for(let add=0;add<15;add++){const probe=new Date(now+add*86400000),lp=autopilotLocalParts(probe,tz);if(!days.includes(lp.day))continue;try{const utc=zonedLocalToUtc(lp.date,time,tz);if(utc.getTime()>now+5*60000)return {date:lp.date,time,timeZone:tz,shortIntervalDays:config.shortIntervalDays||1,utc}}catch{}}
+  throw new Error("No future Autopilot publish slot found");
+}
+async function autopilotJsonPost(base,route,body){
+  const r=await fetch(base+route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error((d?.error||d?.message||route+" HTTP "+r.status));return d;
+}
+async function runAutopilotYouTubeWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-youtube"&&j.status==="production-complete");if(!job)return null;
+  job.status="running";job.stage="youtube-uploading";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const base=process.env.INTERNAL_BASE_URL||("http://127.0.0.1:"+port),metaPath=join(storageRoot,job.projectId,"project.json");let project=JSON.parse(await readFile(metaPath,"utf8")),md=project.metadata||{},yt=project.youtube||{},description=md.description||"";
+    if(!yt.longVideoId){const d=await autopilotJsonPost(base,"/api/youtube/upload-long",{projectId:job.projectId,title:md.longTitle||project.title,description});job.youtubeLongId=d.videoId;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2))}
+    project=JSON.parse(await readFile(metaPath,"utf8"));yt=project.youtube||{};
+    for(let i=1;i<=3;i++){if(!yt.shorts?.[i-1]?.videoId){const d=await autopilotJsonPost(base,"/api/youtube/upload-short",{projectId:job.projectId,index:i,title:md.shortsTitles?.[i-1]||md.longTitle||project.title,description});job.youtubeShortCount=(job.youtubeShortCount||0)+1;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));project=JSON.parse(await readFile(metaPath,"utf8"));yt=project.youtube||{}}}
+    job.stage="youtube-thumbnail";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));const thumb=await autopilotJsonPost(base,"/api/youtube/apply-thumbnail",{projectId:job.projectId});if(!thumb.thumbnailApplied)throw new Error("YouTube custom thumbnail not confirmed");
+    job.stage="youtube-scheduling";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));const slot=await nextAutopilotPublishSlot(),sched=await autopilotJsonPost(base,"/api/youtube/schedule-project",{projectId:job.projectId,scheduleDate:slot.date,scheduleTime:slot.time,timeZone:slot.timeZone,shortIntervalDays:slot.shortIntervalDays});if(!Array.isArray(sched.scheduled)||sched.scheduled.length!==4)throw new Error("YouTube schedule did not confirm all 4 videos");
+    job.stage="youtube-reality-check";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));const reality=await autopilotJsonPost(base,"/api/youtube/reality-check",{projectId:job.projectId});if(!reality.ready)throw new Error("Reality Check failed: missing="+(reality.missing||[]).join(",")+" unscheduled="+(reality.unscheduled||[]).join(",")+" thumbnail="+reality.thumbnailOk);
+    job.status="youtube-complete";job.stage="complete";job.youtubeVerified=true;job.thumbnailVerified=true;job.youtubeVideoCount=4;job.publishSlot=slot.date+"T"+slot.time+"@"+slot.timeZone;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] YouTube Reality Check complete",job.id,job.publishSlot);return job
+  }catch(e){job.status="youtube-failed";job.stage="youtube-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] YouTube failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
