@@ -586,6 +586,16 @@ app.post("/api/projects/:id/archive",async(req,res)=>{
   try{const path=join(storageRoot,id,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),archived=req.body?.archived!==false;meta.archived=archived;meta.archivedAt=archived?new Date().toISOString():null;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));res.json({ok:true,archived,project:meta})}
   catch(e){res.status(404).json({error:"project_not_found",message:e.message})}
 });
+app.delete("/api/projects/:id",async(req,res)=>{
+  const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
+  try{
+    const dir=join(storageRoot,id),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));
+    if(meta.archived!==true)return res.status(409).json({error:"archive_required",message:"Archive the project before permanent deletion."});
+    const confirmation=String(req.body?.confirmation||"").trim(),expected=String(meta.title||"Untitled project").trim();
+    if(confirmation!==expected)return res.status(400).json({error:"confirmation_mismatch",message:"Project title confirmation does not match."});
+    await rm(dir,{recursive:true,force:true});res.json({ok:true,deleted:true,id,title:expected});
+  }catch(e){res.status(404).json({error:"project_not_found",message:e.message})}
+});
 app.get("/api/projects/:id",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");
   try{const raw=await readFile(join(storageRoot,id,"project.json"),"utf8");res.json(JSON.parse(raw))}
