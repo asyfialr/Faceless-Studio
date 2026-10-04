@@ -468,6 +468,8 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),title=String(req.body?.title||"").trim();
     if(!projectId||!title)return res.status(400).json({error:"projectId and title required"});
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
+    const metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
+    const frameTimes=[4,8,12,16,20],frameIndex=((Number(meta.thumbnailFrameIndex)||-1)+1)%frameTimes.length,frameSecond=frameTimes[frameIndex];
     const out=join(projectDir,"thumbnail.jpg"),stop=new Set(["THE","A","AN","TO","OF","FOR","AND","ARE","IS","USING","EVERY","PEOPLE"]);
     const kw=title.split(/\s+/).map(v=>v.replace(/[^a-zA-Z0-9]/g,"")).filter(v=>v&&!stop.has(v.toUpperCase())).slice(0,4);
     const headline=(kw.join(" ")||"NEW VIDEO").toUpperCase(),words=headline.split(/\s+/),lines=[];while(words.length&&lines.length<2)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
@@ -477,7 +479,7 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     try{
       await new Promise((resolve,reject)=>{
         const p=spawn(ffmpegPath,[
-          "-y","-ss","00:00:04",
+          "-y","-ss",String(frameSecond),
           "-i",join(projectDir,"long.mp4"),
           "-frames:v","1","-q:v","2",framePath
         ]);
@@ -500,9 +502,9 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     if(!visual){x.fillStyle="rgba(255,255,255,.10)";x.beginPath();x.arc(1035,225,245,0,Math.PI*2);x.fill();x.fillStyle="rgba(255,255,255,.055)";x.beginPath();x.arc(1110,520,170,0,Math.PI*2);x.fill()}
     x.textBaseline="middle";x.lineJoin="round";x.strokeStyle="rgba(0,0,0,.95)";x.lineWidth=12;x.fillStyle="#fff";const ys=lines.length>1?[315,415]:[365];lines.forEach((line,i)=>{let size=76;while(size>48){x.font="900 "+size+"px CaptionInter, sans-serif";if(x.measureText(line).width<=570)break;size-=2}x.strokeText(line,64,ys[i]);x.fillText(line,64,ys[i])});
     const canvasBuf=c.toBuffer("image/png");if(panel){const fade=Buffer.from('<svg width="620" height="720" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="f"><stop stop-color="#05080f" stop-opacity=".92"/><stop offset=".34" stop-color="#05080f" stop-opacity=".28"/><stop offset="1" stop-color="#05080f" stop-opacity="0"/></linearGradient></defs><rect width="220" height="720" fill="url(#f)"/></svg>');const composed=await sharp(panel).composite([{input:fade,left:0,top:0}]).png().toBuffer();await sharp(canvasBuf).composite([{input:composed,left:660,top:0}]).jpeg({quality:92}).toFile(out)}else await sharp(canvasBuf).jpeg({quality:92}).toFile(out);
-    const url="/media/"+projectId+"/thumbnail.jpg",metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
-    meta.thumbnailUrl=url;meta.thumbnailProvider=visual?"video-frame":"deterministic";meta.thumbnailSafety="local-deterministic-v4.1";meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,thumbnailUrl:url,provider:meta.thumbnailProvider,safety:meta.thumbnailSafety});
+    const url="/media/"+projectId+"/thumbnail.jpg";
+    meta.thumbnailUrl=url;meta.thumbnailProvider=visual?"video-frame":"deterministic";meta.thumbnailSafety="local-deterministic-v4.2";meta.thumbnailFrameIndex=frameIndex;meta.thumbnailFrameSecond=frameSecond;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,thumbnailUrl:url,provider:meta.thumbnailProvider,safety:meta.thumbnailSafety,frameIndex,frameSecond});
   }catch(e){console.error("Thumbnail generation failed",e);res.status(500).json({error:e.message||"Thumbnail generation failed"})}
 });
 app.post("/api/render/shorts",async(req,res)=>{
