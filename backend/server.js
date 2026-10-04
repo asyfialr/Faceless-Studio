@@ -472,7 +472,30 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     const kw=title.split(/\s+/).map(v=>v.replace(/[^a-zA-Z0-9]/g,"")).filter(v=>v&&!stop.has(v.toUpperCase())).slice(0,4);
     const headline=(kw.join(" ")||"NEW VIDEO").toUpperCase(),words=headline.split(/\s+/),lines=[];while(words.length&&lines.length<2)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
     const c=createCanvas(1280,720),x=c.getContext("2d"),g=x.createLinearGradient(0,0,1280,720);g.addColorStop(0,"#05080f");g.addColorStop(1,"#27314a");x.fillStyle=g;x.fillRect(0,0,1280,720);
-    let visual=null;const framePath=join(projectDir,"thumbnail-frame.jpg");try{await new Promise((resolve,reject)=>{const p=spawn(ffmpegPath,["-y","-ss","00:00:04","-i",join(projectDir,"long.mp4"),"-frames:v","1","-q:v","2",framePath]);let err="";p.stderr.on("data",d=>err+=d);p.on("error",reject);p.on("close",c=>c===0?resolve():reject(new Error(err.slice(-500)||"frame extract failed"))});visual=await readFile(framePath)}catch(e){console.warn("Thumbnail frame fallback:",e.message);for(const name of ["scene-1.jpg","scene1.jpg","visual-1.jpg","visual1.jpg","image-1.jpg","image1.jpg"]){try{visual=await readFile(join(projectDir,name));break}catch{}}}
+    let visual=null;
+    const framePath=join(projectDir,"thumbnail-frame.jpg");
+    try{
+      await new Promise((resolve,reject)=>{
+        const p=spawn(ffmpegPath,[
+          "-y","-ss","00:00:04",
+          "-i",join(projectDir,"long.mp4"),
+          "-frames:v","1","-q:v","2",framePath
+        ]);
+        let err="";
+        p.stderr.on("data",d=>{err+=d.toString()});
+        p.on("error",reject);
+        p.on("close",code=>{
+          if(code===0)resolve();
+          else reject(new Error(err.slice(-500)||"frame extract failed"));
+        });
+      });
+      visual=await readFile(framePath);
+    }catch(e){
+      console.warn("Thumbnail frame fallback:",e.message);
+      for(const name of ["scene-1.jpg","scene1.jpg","visual-1.jpg","visual1.jpg","image-1.jpg","image1.jpg"]){
+        try{visual=await readFile(join(projectDir,name));break}catch{}
+      }
+    }
     let panel=null;if(visual){try{panel=await sharp(visual).resize(620,720,{fit:"cover",position:"attention"}).modulate({brightness:.82,saturation:1.08}).png().toBuffer()}catch{visual=null;panel=null}}
     if(!visual){x.fillStyle="rgba(255,255,255,.10)";x.beginPath();x.arc(1035,225,245,0,Math.PI*2);x.fill();x.fillStyle="rgba(255,255,255,.055)";x.beginPath();x.arc(1110,520,170,0,Math.PI*2);x.fill()}
     x.textBaseline="middle";x.lineJoin="round";x.strokeStyle="rgba(0,0,0,.95)";x.lineWidth=12;x.fillStyle="#fff";const ys=lines.length>1?[315,415]:[365];lines.forEach((line,i)=>{let size=76;while(size>48){x.font="900 "+size+"px CaptionInter, sans-serif";if(x.measureText(line).width<=570)break;size-=2}x.strokeText(line,64,ys[i]);x.fillText(line,64,ys[i])});
