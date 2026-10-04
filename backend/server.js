@@ -648,10 +648,28 @@ async function createAutopilotProductionJob(result){
   store.jobs=[job,...(store.jobs||[])].slice(0,100);await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));return job;
 }
 app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await readAutopilotJobs())}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
+async function generateAutopilotScript(title){
+  const geminiKey=process.env.GEMINI_API_KEY;if(!geminiKey)throw new Error("GEMINI_API_KEY not configured");
+  const prompt="Create an original faceless YouTube video script in natural American English. Topic: "+title+"\nAudience: US / International\nTarget duration: 8-10 minutes\nReturn ONLY valid JSON with keys hook (string), outline (array of 5 strings), narration (string), shortsAngles (array of 3 strings). Avoid unsupported factual claims and avoid copying source text.";
+  const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);let lastError="Gemini request failed";
+  for(const model of models){for(let attempt=1;attempt<=2;attempt++){const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})}),data=await r.json();if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";return {model,script:JSON.parse(raw)}}lastError=data?.error?.message||lastError;if(attempt<2&&(r.status===429||r.status===503))await new Promise(resolve=>setTimeout(resolve,1200));else break}}
+  throw new Error(lastError);
+}
+async function runAutopilotScriptWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="script-ready"&&j.status==="queued-safe");if(!job)return null;
+  job.status="running";job.stage="script-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const out=await generateAutopilotScript(job.title),projectId="auto-"+job.id.replace(/-/g,"").slice(0,16),dir=join(storageRoot,projectId);await mkdir(dir,{recursive:true});
+    const meta={id:projectId,title:job.title,narration:out.script.narration,script:out.script,scriptReady:true,autopilotJobId:job.id,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};await writeFile(join(dir,"project.json"),JSON.stringify(meta,null,2));
+    job.projectId=projectId;job.status="script-complete";job.stage="awaiting-voice";job.scriptModel=out.model;job.updatedAt=new Date().toISOString();job.safety="NO_UPLOAD";await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+    const topics=await readAutopilotTopics(),topic=(topics.topics||[]).find(x=>x.id===job.topicId);if(topic){topic.status="consumed";topic.consumedAt=new Date().toISOString();topic.projectId=projectId;await writeFile(autopilotTopicsPath,JSON.stringify(topics,null,2))}
+    console.log("[autopilot] script complete",job.id,projectId);return job;
+  }catch(e){job.status="script-failed";job.stage="script-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] script failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
