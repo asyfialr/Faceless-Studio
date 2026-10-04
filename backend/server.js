@@ -729,10 +729,22 @@ async function runAutopilotLongRenderWorker(){
     meta.longVideoUrl="/media/"+job.projectId+"/long.mp4";meta.renderReady=true;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));job.status="long-render-complete";job.stage="awaiting-shorts";job.longDuration=Number(audioDuration.toFixed(1));job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] long render complete",job.id,job.longDuration);return job
   }catch(e){job.status="long-render-failed";job.stage="long-render-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] long render failed",job.id,job.error);return job}
 }
+async function runAutopilotShortsWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-shorts"&&j.status==="long-render-complete");if(!job)return null;
+  job.status="running";job.stage="shorts-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const dir=join(storageRoot,job.projectId),input=join(dir,"long.mp4"),metaPath=join(dir,"project.json"),meta=JSON.parse(await readFile(metaPath,"utf8")),duration=await getMediaDuration(input),outputs=[];
+    for(let i=0;i<3;i++){const start=Math.min(i*20,Math.max(0,duration-2)),remaining=Math.max(2,duration-start),clip=Math.min(20,remaining),out=join(dir,"short-"+(i+1)+".mp4");
+      await new Promise((resolve,reject)=>{const args=["-y","-ss",String(start),"-i",input,"-t",String(clip),"-vf","scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p","-c:v","libx264","-preset","ultrafast","-threads","1","-r","30","-c:a","aac","-b:a","96k","-movflags","+faststart",out],cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err=(err+d.toString()).slice(-3500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error("Short "+(i+1)+" FFmpeg code="+code+" signal="+(signal||"none")+" "+err.slice(-900))))});
+      outputs.push("/media/"+job.projectId+"/short-"+(i+1)+".mp4");job.shortCount=outputs.length;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+    }
+    meta.shorts=outputs;meta.shortsReady=true;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));job.status="shorts-complete";job.stage="awaiting-captions";job.shortCount=3;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] shorts complete",job.id);return job
+  }catch(e){job.status="shorts-failed";job.stage="shorts-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] shorts failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
