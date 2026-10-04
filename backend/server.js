@@ -741,10 +741,21 @@ async function runAutopilotShortsWorker(){
     meta.shorts=outputs;meta.shortsReady=true;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));job.status="shorts-complete";job.stage="awaiting-captions";job.shortCount=3;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] shorts complete",job.id);return job
   }catch(e){job.status="shorts-failed";job.stage="shorts-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] shorts failed",job.id,job.error);return job}
 }
+async function runAutopilotCaptionsWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-captions"&&j.status==="shorts-complete");if(!job)return null;
+  job.status="running";job.stage="captions-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));if(!meta.narration)throw new Error("Project narration is missing");
+    const base=process.env.INTERNAL_BASE_URL||("http://127.0.0.1:"+port),r=await fetch(base+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:job.projectId,narration:meta.narration,longDuration:job.longDuration||0})}),data=await r.json();
+    if(!r.ok)throw new Error(data?.message||data?.error||("Caption renderer HTTP "+r.status));
+    const updated=JSON.parse(await readFile(path,"utf8"));updated.captionTimingReady=true;updated.captionsReady=true;updated.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(updated,null,2));
+    job.status="captions-complete";job.stage="awaiting-metadata";job.captionEngine=data.captionEngine||"segmented-overlay";job.captionTiming=data.captionTiming||"unknown";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] captions complete",job.id,job.captionTiming);return job
+  }catch(e){job.status="captions-failed";job.stage="captions-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
