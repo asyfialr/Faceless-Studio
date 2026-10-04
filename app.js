@@ -47,6 +47,7 @@ function renderIdeas(){
 function showPage(id){
   document.querySelectorAll(".page").forEach(function(p){p.classList.toggle("active",p.id===id)});
   if(id==="reviewStudio"&&longRenderUrl)setTimeout(function(){selectPreview(0)},0);
+  if(id==="projectsPage")loadProjectHistory();
   try{window.scrollTo(0,0)}catch(e){}
 }
 function syncHash(){
@@ -54,6 +55,14 @@ function syncHash(){
   if(document.getElementById(id))showPage(id);
 }
 window.addEventListener("hashchange",syncHash);
+async function loadProjectHistory(){
+  var box=$("projects");if(!box)return;box.classList.remove("empty");box.innerHTML='<div class="card"><p class="muted">Loading saved projects…</p></div>';
+  try{var r=await fetch(API_BASE+"/api/projects"),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Projects unavailable");var list=d.projects||[];if(!list.length){box.classList.add("empty");box.textContent="No saved projects yet.";return}
+    box.innerHTML=list.map(function(p){var state=p.youtubeVerified?"YouTube Verified ✓":(p.productionReady?"Production Ready":"In Progress"),schedule=p.schedule?.[0]?.publishAt?new Date(p.schedule[0].publishAt).toLocaleString():"Not scheduled";return '<article class="card project-history"><div><p class="eyebrow">'+state+'</p><h3>'+escapeHtml(p.title||"Untitled project")+'</h3><p class="muted">'+p.progress+'% production • Long '+(p.longVideoId?"1/1":"0/1")+' • Shorts '+p.shortCount+'/3</p><p class="muted">Long schedule: '+escapeHtml(schedule)+(p.thumbnailVerified?' • Custom thumbnail ✓':'')+'</p></div><button class="secondary open-history-project" data-id="'+escapeHtml(p.id)+'">Open Project</button></article>'}).join("");
+    document.querySelectorAll(".open-history-project").forEach(function(b){b.onclick=async function(){var id=b.getAttribute("data-id");localStorage.setItem("facelessProjectId",id);try{var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id)),pd=await pr.json();if(pr.ok){if(pd.title){selectedTitle=pd.title;sessionStorage.setItem("selectedTitle",pd.title)}syncDashboardFromProject(pd)}}catch(e){}location.hash="#dashboard"}});
+  }catch(e){box.innerHTML='<div class="card"><p class="muted">Projects could not load: '+escapeHtml(e.message)+'</p></div>'}
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function addProjects(){projectMade=true;$("projects").classList.remove("empty");$("projects").innerHTML=`<div class="project"><div><strong>${selectedTitle}</strong><small>Long • 8–10 min • Ready for review</small></div><span>16:9</span></div>`+[1,2,3].map((n)=>`<div class="project"><div><strong>Short #00${n}</strong><small>Derived from long video • Ready</small></div><span>9:16</span></div>`).join("")}
 createBtn.onclick=async()=>{createBtn.disabled=true;$("queueCount").textContent="1";$("longCount").textContent="0/1";$("shortCount").textContent="0/3";for(let i=0;i<stages.length;i++){drawStages(i);let pct=Math.round((i+1)/stages.length*100);progressBar.style.width=pct+"%";progressLabel.textContent=pct+"%";statusText.textContent=stages[i]+"…";if(i===4)$("longCount").textContent="1/1";if(i>=5)$("shortCount").textContent=Math.min(3,i-4)+"/3";await new Promise(r=>setTimeout(r,420))}$("shortCount").textContent="3/3";$("queueCount").textContent="0";statusText.textContent="Production complete. Ready for review and scheduling.";addProjects();createBtn.disabled=false;createBtn.textContent="Create Another"};
 $("autopilot").onchange=e=>{localStorage.autopilot=e.target.checked?"1":"0";statusText.textContent=e.target.checked?"Autopilot enabled. Future runs can be scheduled automatically.":"Autopilot off. Manual approval mode active."};
