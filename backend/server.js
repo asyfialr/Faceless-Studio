@@ -752,10 +752,24 @@ async function runAutopilotCaptionsWorker(){
     job.status="captions-complete";job.stage="awaiting-metadata";job.captionEngine=data.captionEngine||"segmented-overlay";job.captionTiming=data.captionTiming||"unknown";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] captions complete",job.id,job.captionTiming);return job
   }catch(e){job.status="captions-failed";job.stage="captions-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,job.error);return job}
 }
+async function runAutopilotMetadataThumbnailWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-metadata"&&j.status==="captions-complete");if(!job)return null;
+  job.status="running";job.stage="metadata-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));if(!meta.title||!meta.narration)throw new Error("Project title/narration is missing");
+    const base=process.env.INTERNAL_BASE_URL||("http://127.0.0.1:"+port);
+    const mr=await fetch(base+"/api/ai/metadata",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:meta.title,narration:meta.narration})}),metadata=await mr.json();if(!mr.ok)throw new Error(metadata?.error||("Metadata HTTP "+mr.status));
+    meta.metadata=metadata;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));
+    job.stage="thumbnail-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+    const tr=await fetch(base+"/api/ai/thumbnail",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:job.projectId,title:metadata.longTitle||meta.title})}),thumb=await tr.json();if(!tr.ok)throw new Error(thumb?.error||("Thumbnail HTTP "+tr.status));
+    const updated=JSON.parse(await readFile(path,"utf8"));updated.metadata=metadata;updated.metadataReady=true;updated.productionReady=true;updated.thumbnailReady=true;updated.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(updated,null,2));
+    job.status="production-complete";job.stage="awaiting-youtube";job.metadataReady=true;job.thumbnailReady=true;job.thumbnailProvider=thumb.provider||"unknown";job.thumbnailFrameSecond=thumb.frameSecond??null;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] production complete",job.id);return job
+  }catch(e){job.status="metadata-thumbnail-failed";job.stage="production-finalize-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] metadata/thumbnail failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
