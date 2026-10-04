@@ -292,6 +292,7 @@ async function runAutopilotDryRun(){
 }
 var dryRunButton=document.getElementById("runAutopilotDryRun");if(dryRunButton)dryRunButton.onclick=function(e){e.preventDefault();runAutopilotDryRun()};
 refreshAutopilotEngine();
+setInterval(function(){if(location.hash==="#scheduler")refreshAutopilotEngine()},30000);
 
 syncHash();
 async function restorePersistentProject(){
