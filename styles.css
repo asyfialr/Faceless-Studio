@@ -29,3 +29,6 @@
 .autopilot-history{display:grid;gap:7px}
 .autopilot-history-row{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:10px}
 @media(max-width:760px){.autopilot-history-row{align-items:flex-start;flex-direction:column}}
+
+.autopilot-jobs-panel{border-top:1px solid rgba(255,255,255,.1);padding-top:12px;display:grid;gap:8px}
+#autopilotJobs{display:grid;gap:7px}
