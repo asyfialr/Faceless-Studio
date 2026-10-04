@@ -441,6 +441,22 @@ app.post("/api/youtube/verify-project",async(req,res)=>{
     project.youtube=yt;await writeFile(metaPath,JSON.stringify(project,null,2));res.json({ok:true,youtube:yt});
   }catch(e){res.status(500).json({error:e.message||"YouTube verification failed"})}
 });
+
+app.post("/api/youtube/reality-check",async(req,res)=>{
+  try{
+    const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!projectId)return res.status(400).json({error:"projectId required"});
+    const metaPath=join(storageRoot,projectId,"project.json"),project=JSON.parse(await readFile(metaPath,"utf8")),yt=project.youtube||{},token=await youtubeAccessToken();
+    const expected=[{type:"long",id:yt.longVideoId},...Array.from({length:3},(_,i)=>({type:"short"+(i+1),id:yt.shorts?.[i]?.videoId}))];
+    const ids=expected.map(x=>x.id).filter(Boolean),found=new Map();
+    if(ids.length){const r=await fetch("https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status,processingDetails&id="+encodeURIComponent(ids.join(",")),{headers:{Authorization:"Bearer "+token}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error("YouTube reality check "+r.status+" "+JSON.stringify(d).slice(0,500));for(const v of d.items||[])found.set(v.id,v)}
+    const videos=expected.map(x=>{const v=found.get(x.id);return {type:x.type,id:x.id||null,exists:!!v,title:v?.snippet?.title||null,duration:v?.contentDetails?.duration||null,hasCustomThumbnail:v?.contentDetails?.hasCustomThumbnail===true,thumbnail:v?.snippet?.thumbnails?.maxres?.url||v?.snippet?.thumbnails?.high?.url||null,privacyStatus:v?.status?.privacyStatus||null,publishAt:v?.status?.publishAt||null,processingStatus:v?.processingDetails?.processingStatus||null}});
+    const long=videos[0],shorts=videos.slice(1),missing=videos.filter(v=>!v.exists).map(v=>v.type),unscheduled=videos.filter(v=>v.exists&&!v.publishAt).map(v=>v.type),thumbnailOk=long.exists&&long.hasCustomThumbnail;
+    const ready=missing.length===0&&unscheduled.length===0&&thumbnailOk;
+    project.youtube.realityCheck={ready,checkedAt:new Date().toISOString(),missing,unscheduled,thumbnailOk};await writeFile(metaPath,JSON.stringify(project,null,2));
+    res.json({ok:true,ready,thumbnailOk,missing,unscheduled,videos});
+  }catch(e){console.error("YouTube reality check failed",e);res.status(500).json({error:e.message||"YouTube reality check failed"})}
+});
+
 app.post("/api/youtube/schedule-project",async(req,res)=>{
   try{
     const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),longAt=String(req.body?.longPublishAt||""),scheduleDate=String(req.body?.scheduleDate||""),scheduleTime=String(req.body?.scheduleTime||""),timeZone=String(req.body?.timeZone||"America/New_York"),intervalDays=Math.max(1,Math.min(30,Number(req.body?.shortIntervalDays||1)));
