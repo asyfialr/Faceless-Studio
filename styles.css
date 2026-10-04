@@ -9,3 +9,8 @@
 .project-schedule{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin-top:10px}
 .project-schedule span{font-size:12px;opacity:.78}
 @media(max-width:760px){.project-history{align-items:stretch;flex-direction:column}.project-schedule{grid-template-columns:1fr}.project-history button{width:100%}}
+
+.project-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.project-history.active-project{outline:1px solid rgba(255,255,255,.18)}
+.project-actions .link-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;white-space:nowrap}
+@media(max-width:760px){.project-actions{display:grid;grid-template-columns:1fr}.project-actions>*{width:100%}}
