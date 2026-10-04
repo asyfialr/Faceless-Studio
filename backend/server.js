@@ -680,10 +680,22 @@ async function runAutopilotVoiceWorker(){
     job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
   }catch(e){job.status="voice-failed";job.stage="voice-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] voice failed",job.id,job.error);return job}
 }
+async function generateAutopilotVisualPlan(title,narration){
+  const key=process.env.GEMINI_API_KEY;if(!key)throw new Error("GEMINI_API_KEY not configured");
+  const models=[process.env.GEMINI_PLANNER_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i),prompt="Create a visual plan for an original faceless YouTube video. Title: "+title+"\nNarration: "+String(narration||"").slice(0,12000)+"\nReturn ONLY valid JSON with key scenes. scenes must be an array of 6 to 10 objects with keys: scene (number), duration (short string like 8-12 sec), visualPrompt (specific original B-roll/image/video direction), onScreenText (short string, may be empty). Keep visuals safe, realistic, copyright-conscious, and suitable for a US/international audience.";let lastError="Visual planning failed";
+  for(const model of models){for(let attempt=1;attempt<=3;attempt++){const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})}),data=await r.json();if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"",plan=JSON.parse(raw);if(!Array.isArray(plan.scenes)||!plan.scenes.length)throw new Error("Visual plan returned no scenes");return {model,scenes:plan.scenes}}lastError=data?.error?.message||lastError;if(attempt<3&&(r.status===429||r.status===503))await new Promise(resolve=>setTimeout(resolve,attempt*1500));else break}}
+  throw new Error(lastError);
+}
+async function runAutopilotVisualPlanWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-visual-plan"&&j.status==="voice-complete");if(!job)return null;
+  job.status="running";job.stage="visual-plan-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVisualPlan(meta.title,meta.narration);meta.visualPlan=out.scenes;meta.visualPlanModel=out.model;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));job.status="visual-plan-complete";job.stage="awaiting-visuals";job.visualPlanModel=out.model;job.sceneCount=out.scenes.length;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] visual plan complete",job.id,out.scenes.length);return job}
+  catch(e){job.status="visual-plan-failed";job.stage="visual-plan-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] visual plan failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
