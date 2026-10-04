@@ -714,10 +714,25 @@ async function runAutopilotVisualWorker(){
     meta.productionReady=visuals.length>=scenes.length;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));job.status="visuals-complete";job.stage="awaiting-long-render";job.visualCount=visuals.length;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] visuals complete",job.id,visuals.length);return job
   }catch(e){job.status="visuals-failed";job.stage="visuals-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] visuals failed",job.id,job.error);return job}
 }
+async function getMediaDuration(path){
+  return await new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,["-i",path,"-f","null","-"]);let err="";cp.stderr.on("data",d=>err+=d.toString());cp.on("error",reject);cp.on("close",()=>{const m=err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);m?resolve(Number(m[1])*3600+Number(m[2])*60+Number(m[3])):reject(new Error("Could not read media duration"))})});
+}
+async function runAutopilotLongRenderWorker(){
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-long-render"&&j.status==="visuals-complete");if(!job)return null;
+  job.status="running";job.stage="long-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+  try{
+    const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),voice=join(dir,"voice.wav"),visuals=Array.isArray(meta.visuals)?meta.visuals:[];if(!visuals.length)throw new Error("No visuals available for Long render");
+    const audioDuration=await getMediaDuration(voice),perScene=Math.max(2,audioDuration/visuals.length),listPath=join(dir,"autopilot-scenes.txt"),lines=[];
+    for(const v of visuals.sort((a,b)=>a.scene-b.scene)){const imagePath=join(dir,v.file);lines.push("file '"+imagePath.replace(/'/g,"'\\''")+"'");lines.push("duration "+perScene.toFixed(3))}
+    const last=join(dir,visuals[visuals.length-1].file);lines.push("file '"+last.replace(/'/g,"'\\''")+"'");await writeFile(listPath,lines.join("\n")+"\n");
+    const out=join(dir,"long.mp4");await new Promise((resolve,reject)=>{const args=["-y","-f","concat","-safe","0","-i",listPath,"-i",voice,"-vf","scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p","-c:v","libx264","-preset","veryfast","-r","30","-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",out],cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err=(err+d.toString()).slice(-5000));cp.on("error",reject);cp.on("close",code=>code===0?resolve():reject(new Error("FFmpeg exited "+code+" "+err.slice(-1500))))});
+    meta.longVideoUrl="/media/"+job.projectId+"/long.mp4";meta.renderReady=true;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));job.status="long-render-complete";job.stage="awaiting-shorts";job.longDuration=Number(audioDuration.toFixed(1));job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] long render complete",job.id,job.longDuration);return job
+  }catch(e){job.status="long-render-failed";job.stage="long-render-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] long render failed",job.id,job.error);return job}
+}
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
-  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker()}
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker()}
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
