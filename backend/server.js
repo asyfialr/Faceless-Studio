@@ -469,7 +469,7 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     if(!projectId||!title)return res.status(400).json({error:"projectId and title required"});
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
     const metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
-    const frameTimes=[4,8,12,16,20],frameIndex=((Number(meta.thumbnailFrameIndex)||-1)+1)%frameTimes.length,frameSecond=frameTimes[frameIndex];
+    const frameTimes=[4,8,12,16,20],savedFrameIndex=Number(meta.thumbnailFrameIndex),frameIndex=((Number.isInteger(savedFrameIndex)?savedFrameIndex:-1)+1)%frameTimes.length,frameSecond=frameTimes[frameIndex];
     const out=join(projectDir,"thumbnail.jpg"),stop=new Set(["THE","A","AN","TO","OF","FOR","AND","ARE","IS","USING","EVERY","PEOPLE"]);
     const kw=title.split(/\s+/).map(v=>v.replace(/[^a-zA-Z0-9]/g,"")).filter(v=>v&&!stop.has(v.toUpperCase())).slice(0,4);
     const headline=(kw.join(" ")||"NEW VIDEO").toUpperCase(),words=headline.split(/\s+/),lines=[];while(words.length&&lines.length<2)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
