@@ -786,8 +786,28 @@ async function runAutopilotYouTubeWorker(){
     job.stage="youtube-thumbnail";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));const thumb=await autopilotJsonPost(base,"/api/youtube/apply-thumbnail",{projectId:job.projectId});if(!thumb.thumbnailApplied)throw new Error("YouTube custom thumbnail not confirmed");
     job.stage="youtube-scheduling";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));const slot=await nextAutopilotPublishSlot(),sched=await autopilotJsonPost(base,"/api/youtube/schedule-project",{projectId:job.projectId,scheduleDate:slot.date,scheduleTime:slot.time,timeZone:slot.timeZone,shortIntervalDays:slot.shortIntervalDays});if(!Array.isArray(sched.scheduled)||sched.scheduled.length!==4)throw new Error("YouTube schedule did not confirm all 4 videos");
     job.stage="youtube-reality-check";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));let reality=null;for(let attempt=1;attempt<=5;attempt++){reality=await autopilotJsonPost(base,"/api/youtube/reality-check",{projectId:job.projectId});job.realityAttempt=attempt;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));if(reality.ready)break;if((reality.missing||[]).length)break;if(attempt<5)await new Promise(resolve=>setTimeout(resolve,attempt*5000))}if(!reality?.ready)throw new Error("Reality Check failed after "+(job.realityAttempt||1)+" checks: missing="+(reality?.missing||[]).join(",")+" unscheduled="+(reality?.unscheduled||[]).join(",")+" thumbnail="+reality?.thumbnailOk);
-    job.status="youtube-complete";job.stage="complete";job.youtubeVerified=true;job.thumbnailVerified=true;job.youtubeVideoCount=4;job.publishSlot=slot.date+"T"+slot.time+"@"+slot.timeZone;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] YouTube Reality Check complete",job.id,job.publishSlot);return job
+    job.status="youtube-complete";job.stage="complete";delete job.error;job.recovered=true;job.youtubeVerified=true;job.thumbnailVerified=true;job.youtubeVideoCount=4;job.publishSlot=slot.date+"T"+slot.time+"@"+slot.timeZone;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] YouTube Reality Check complete",job.id,job.publishSlot);return job
   }catch(e){job.status="youtube-failed";job.stage="youtube-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] YouTube failed",job.id,job.error);return job}
+}
+async function recoverInterruptedAutopilotJobs(){
+  const store=await readAutopilotJobs();let changed=false;
+  for(const job of store.jobs||[]){
+    if(job.status!=="running")continue;
+    const stage=String(job.stage||"");
+    if(stage==="script-generating"){job.status="queued";job.stage="awaiting-script"}
+    else if(stage==="voice-generating"){job.status="script-complete";job.stage="awaiting-voice"}
+    else if(stage==="visual-plan-generating"){job.status="voice-complete";job.stage="awaiting-visual-plan"}
+    else if(stage==="visuals-generating"){job.status="visual-plan-complete";job.stage="awaiting-visuals"}
+    else if(stage==="long-rendering"){job.status="visuals-complete";job.stage="awaiting-long-render"}
+    else if(stage==="shorts-rendering"){job.status="long-render-complete";job.stage="awaiting-shorts"}
+    else if(stage==="captions-rendering"){job.status="shorts-complete";job.stage="awaiting-captions"}
+    else if(stage==="metadata-generating"||stage==="thumbnail-generating"){job.status="captions-complete";job.stage="awaiting-metadata"}
+    else if(stage.startsWith("youtube-")){job.status="production-complete";job.stage="awaiting-youtube"}
+    else continue;
+    job.recoveredFrom=stage;job.recoveredAt=new Date().toISOString();job.updatedAt=job.recoveredAt;delete job.error;changed=true;
+  }
+  if(changed){await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] recovered interrupted jobs")}
+  return changed;
 }
 let autopilotTimerBusy=false;
 async function automaticAutopilotTick(){
@@ -796,6 +816,6 @@ async function automaticAutopilotTick(){
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
-setTimeout(automaticAutopilotTick,5000);
+recoverInterruptedAutopilotJobs().catch(e=>console.error("[autopilot] recovery failed",e.message)).finally(()=>setTimeout(automaticAutopilotTick,5000));
 setInterval(automaticAutopilotTick,30000);
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
