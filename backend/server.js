@@ -635,7 +635,12 @@ app.post("/api/autopilot/engine/dry-run",async(req,res)=>{try{res.json(await eva
 app.get("/api/autopilot/history",async(req,res)=>{try{res.json(await readAutopilotHistory())}catch(e){res.status(500).json({error:"autopilot_history_failed",message:e.message})}});
 const autopilotTopicsPath=join(storageRoot,"autopilot-topics.json");
 async function readAutopilotTopics(){try{return JSON.parse(await readFile(autopilotTopicsPath,"utf8"))}catch(e){return {topics:[]}}}
-function nextQueuedAutopilotTopic(store){return [...(store.topics||[])].filter(x=>x.status==="queued").sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.id||"").localeCompare(String(b.id||"")))[0]||null}
+function nextQueuedAutopilotTopic(store){
+  return (store.topics||[])
+    .map((topic,index)=>({topic,index}))
+    .filter(x=>x.topic.status==="queued")
+    .sort((a,b)=>String(a.topic.createdAt||"").localeCompare(String(b.topic.createdAt||""))||a.index-b.index)[0]?.topic||null;
+}
 app.get("/api/autopilot/topics",async(req,res)=>{try{res.json(await readAutopilotTopics())}catch(e){res.status(500).json({error:"autopilot_topics_failed",message:e.message})}});
 app.post("/api/autopilot/topics",async(req,res)=>{
   try{const incoming=Array.isArray(req.body?.topics)?req.body.topics:[],clean=incoming.map(x=>String(x||"").trim()).filter(Boolean).slice(0,50),store=await readAutopilotTopics();store.topics=[...(store.topics||[]),...clean.map(title=>({id:crypto.randomUUID(),title,status:"queued",createdAt:new Date().toISOString()}))].slice(-100);await writeFile(autopilotTopicsPath,JSON.stringify(store,null,2));res.json({ok:true,topics:store.topics})}
