@@ -118,7 +118,6 @@ async function buildScriptDraft(){
 }
 function escapeHtml(v){return String(v).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]})}
 $("generateScript").onclick=buildScriptDraft;
-syncHash();
 
 function drawProduction(active=-1,done=-1){
   $("productionSteps").innerHTML=productionStages.map(function(s,i){
@@ -259,6 +258,7 @@ $("previewRegenerate").onclick=function(){
 selectPreview(0);
 
 const API_BASE="https://faceless-studio-production-c487.up.railway.app";
+syncHash();
 async function restorePersistentProject(){
   var id=localStorage.getItem("activeProjectId");if(!id)return;
   try{var r=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(id),{cache:"no-store"});if(!r.ok)return;
