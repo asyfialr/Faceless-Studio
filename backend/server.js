@@ -648,6 +648,9 @@ async function createAutopilotProductionJob(result){
   store.jobs=[job,...(store.jobs||[])].slice(0,100);await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));return job;
 }
 app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await readAutopilotJobs())}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
+app.post("/api/autopilot/jobs/:id/retry-visual-plan",async(req,res)=>{
+  try{const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.id===req.params.id);if(!job)return res.status(404).json({error:"job_not_found"});if(job.status!=="visual-plan-failed")return res.status(409).json({error:"job_not_failed",message:"Only failed visual-plan jobs can be retried."});job.status="voice-complete";job.stage="awaiting-visual-plan";job.visualPlanRetries=0;job.error=null;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));res.json({ok:true,job})}catch(e){res.status(500).json({error:"retry_failed",message:e.message})}
+});
 async function generateAutopilotScript(title){
   const geminiKey=process.env.GEMINI_API_KEY;if(!geminiKey)throw new Error("GEMINI_API_KEY not configured");
   const prompt="Create an original faceless YouTube video script in natural American English. Topic: "+title+"\nAudience: US / International\nTarget duration: 8-10 minutes\nReturn ONLY valid JSON with keys hook (string), outline (array of 5 strings), narration (string), shortsAngles (array of 3 strings). Avoid unsupported factual claims and avoid copying source text.";
