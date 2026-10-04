@@ -648,6 +648,16 @@ async function createAutopilotProductionJob(result){
   store.jobs=[job,...(store.jobs||[])].slice(0,100);await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));return job;
 }
 app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await readAutopilotJobs())}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
+app.post("/api/autopilot/run-next",async(req,res)=>{
+  try{
+    const jobs=await readAutopilotJobs(),active=(jobs.jobs||[]).find(j=>!["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"].includes(String(j.stage||""))&&!["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"].includes(String(j.status||"")));
+    if(active)return res.status(409).json({error:"autopilot_busy",message:"An autopilot production job is already active.",job:active});
+    const topics=await readAutopilotTopics(),topic=(topics.topics||[]).find(x=>x.status==="queued");if(!topic)return res.status(409).json({error:"no_queued_topic",message:"No queued topic is available."});
+    const config=await readAutopilotConfig(),now=new Date(),local=autopilotLocalParts(now,config.timeZone||"America/New_York"),result={slot:"manual-"+now.toISOString(),config,local,recorded:{id:crypto.randomUUID(),slot:"manual-"+now.toISOString(),status:"manual-repeatability-test",source:"manual"}};
+    const job=await createAutopilotProductionJob(result);if(!job)throw new Error("Could not create repeatability test job");
+    res.json({ok:true,job,topic:{id:topic.id,title:topic.title},message:"Queued topic assigned to the normal autonomous pipeline."});
+  }catch(e){res.status(500).json({error:"run_next_failed",message:e.message})}
+});
 app.post("/api/autopilot/jobs/:id/retry-visual-plan",async(req,res)=>{
   try{const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.id===req.params.id);if(!job)return res.status(404).json({error:"job_not_found"});if(job.status!=="visual-plan-failed")return res.status(409).json({error:"job_not_failed",message:"Only failed visual-plan jobs can be retried."});job.status="voice-complete";job.stage="awaiting-visual-plan";job.visualPlanRetries=0;job.error=null;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));res.json({ok:true,job})}catch(e){res.status(500).json({error:"retry_failed",message:e.message})}
 });
