@@ -475,36 +475,36 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     const headline=(kw.join(" ")||"NEW VIDEO").toUpperCase(),words=headline.split(/\s+/),lines=[];while(words.length&&lines.length<2)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
     const c=createCanvas(1280,720),x=c.getContext("2d"),g=x.createLinearGradient(0,0,1280,720);g.addColorStop(0,"#05080f");g.addColorStop(1,"#27314a");x.fillStyle=g;x.fillRect(0,0,1280,720);
     let visual=null;
-    const framePath=join(projectDir,"thumbnail-frame.jpg");
-    try{
-      await new Promise((resolve,reject)=>{
-        const p=spawn(ffmpegPath,[
-          "-y","-ss",String(frameSecond),
-          "-i",join(projectDir,"long.mp4"),
-          "-frames:v","1","-q:v","2",framePath
-        ]);
-        let err="";
-        p.stderr.on("data",d=>{err+=d.toString()});
-        p.on("error",reject);
-        p.on("close",code=>{
-          if(code===0)resolve();
-          else reject(new Error(err.slice(-500)||"frame extract failed"));
+    const framePath=join(projectDir,"thumbnail-frame.jpg"),previousFramePath=join(projectDir,"thumbnail-frame-prev.jpg");
+    const candidateTimes=[4,8,12,16,20,26,32,40,50,60];
+    const savedCandidate=Number(meta.thumbnailCandidateIndex);
+    const candidateStart=((Number.isInteger(savedCandidate)?savedCandidate:-1)+1)%candidateTimes.length;
+    let chosenCandidate=candidateStart,frameSecond=candidateTimes[candidateStart],bestDiff=-1,bestBuffer=null;
+    let previousHash=null;
+    try{previousHash=await sharp(await readFile(previousFramePath)).resize(16,16,{fit:"fill"}).grayscale().raw().toBuffer()}catch{}
+    for(let attempt=0;attempt<Math.min(6,candidateTimes.length);attempt++){
+      const idx=(candidateStart+attempt)%candidateTimes.length,sec=candidateTimes[idx],tempPath=join(projectDir,"thumbnail-candidate-"+idx+".jpg");
+      try{
+        await new Promise((resolve,reject)=>{
+          const p=spawn(ffmpegPath,["-y","-ss",String(sec),"-i",join(projectDir,"long.mp4"),"-frames:v","1","-q:v","3",tempPath]);
+          let err="";p.stderr.on("data",d=>{err+=d.toString()});p.on("error",reject);p.on("close",code=>code===0?resolve():reject(new Error(err.slice(-400)||"frame extract failed")));
         });
-      });
-      visual=await readFile(framePath);
-    }catch(e){
-      console.warn("Thumbnail frame fallback:",e.message);
-      for(const name of ["scene-1.jpg","scene1.jpg","visual-1.jpg","visual1.jpg","image-1.jpg","image1.jpg"]){
-        try{visual=await readFile(join(projectDir,name));break}catch{}
-      }
+        const buf=await readFile(tempPath);
+        let diff=999;
+        if(previousHash){const hash=await sharp(buf).resize(16,16,{fit:"fill"}).grayscale().raw().toBuffer();let sum=0;for(let i=0;i<Math.min(hash.length,previousHash.length);i++)sum+=Math.abs(hash[i]-previousHash[i]);diff=sum/Math.min(hash.length,previousHash.length)}
+        if(diff>bestDiff){bestDiff=diff;bestBuffer=buf;chosenCandidate=idx;frameSecond=sec}
+        if(!previousHash||diff>=18)break;
+      }catch(e){console.warn("Thumbnail candidate "+sec+"s:",e.message)}
     }
+    if(bestBuffer){visual=bestBuffer;await writeFile(framePath,bestBuffer);await writeFile(previousFramePath,bestBuffer)}
+    else{for(const name of ["scene-1.jpg","scene1.jpg","visual-1.jpg","visual1.jpg","image-1.jpg","image1.jpg"]){try{visual=await readFile(join(projectDir,name));break}catch{}}}
     let panel=null;if(visual){try{panel=await sharp(visual).resize(620,720,{fit:"cover",position:"attention"}).modulate({brightness:.82,saturation:1.08}).png().toBuffer()}catch{visual=null;panel=null}}
     if(!visual){x.fillStyle="rgba(255,255,255,.10)";x.beginPath();x.arc(1035,225,245,0,Math.PI*2);x.fill();x.fillStyle="rgba(255,255,255,.055)";x.beginPath();x.arc(1110,520,170,0,Math.PI*2);x.fill()}
     x.textBaseline="middle";x.lineJoin="round";x.strokeStyle="rgba(0,0,0,.95)";x.lineWidth=12;x.fillStyle="#fff";const ys=lines.length>1?[315,415]:[365];lines.forEach((line,i)=>{let size=76;while(size>48){x.font="900 "+size+"px CaptionInter, sans-serif";if(x.measureText(line).width<=570)break;size-=2}x.strokeText(line,64,ys[i]);x.fillText(line,64,ys[i])});
     const canvasBuf=c.toBuffer("image/png");if(panel){const fade=Buffer.from('<svg width="620" height="720" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="f"><stop stop-color="#05080f" stop-opacity=".92"/><stop offset=".34" stop-color="#05080f" stop-opacity=".28"/><stop offset="1" stop-color="#05080f" stop-opacity="0"/></linearGradient></defs><rect width="220" height="720" fill="url(#f)"/></svg>');const composed=await sharp(panel).composite([{input:fade,left:0,top:0}]).png().toBuffer();await sharp(canvasBuf).composite([{input:composed,left:660,top:0}]).jpeg({quality:92}).toFile(out)}else await sharp(canvasBuf).jpeg({quality:92}).toFile(out);
     const url="/media/"+projectId+"/thumbnail.jpg";
-    meta.thumbnailUrl=url;meta.thumbnailProvider=visual?"video-frame":"deterministic";meta.thumbnailSafety="local-deterministic-v4.2";meta.thumbnailFrameIndex=frameIndex;meta.thumbnailFrameSecond=frameSecond;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
-    res.json({ok:true,thumbnailUrl:url,provider:meta.thumbnailProvider,safety:meta.thumbnailSafety,frameIndex,frameSecond});
+    meta.thumbnailUrl=url;meta.thumbnailProvider=visual?"video-frame":"deterministic";meta.thumbnailSafety="smart-frame-v4.3";meta.thumbnailCandidateIndex=chosenCandidate;meta.thumbnailFrameIndex=chosenCandidate;meta.thumbnailFrameSecond=frameSecond;meta.thumbnailFrameDifference=Math.round(bestDiff*10)/10;meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
+    res.json({ok:true,thumbnailUrl:url,provider:meta.thumbnailProvider,safety:meta.thumbnailSafety,frameIndex:chosenCandidate,frameSecond,frameDifference:meta.thumbnailFrameDifference});
   }catch(e){console.error("Thumbnail generation failed",e);res.status(500).json({error:e.message||"Thumbnail generation failed"})}
 });
 app.post("/api/render/shorts",async(req,res)=>{
