@@ -622,15 +622,24 @@ function autopilotLocalParts(date,timeZone){
   const parts=new Intl.DateTimeFormat("en-US",{timeZone,weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(date),o={};
   parts.forEach(p=>{if(p.type!=="literal")o[p.type]=p.value});return {day:String(o.weekday||"").toUpperCase(),date:o.year+"-"+o.month+"-"+o.day,time:o.hour+":"+o.minute};
 }
-async function evaluateAutopilot(now=new Date(),record=false){
+async function evaluateAutopilot(now=new Date(),record=false,source="manual"){
   let config;try{config=JSON.parse(await readFile(autopilotConfigPath,"utf8"))}catch(e){config={enabled:false,days:[],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1}}
   const local=autopilotLocalParts(now,config.timeZone||"America/New_York"),history=await readAutopilotHistory(),slot=local.date+"T"+String(config.time||"19:00")+"@"+String(config.timeZone||"America/New_York");
   const alreadyRun=(history.runs||[]).some(r=>r.slot===slot),due=config.enabled===true&&(config.days||[]).includes(local.day)&&local.time===config.time&&!alreadyRun;
   const result={enabled:config.enabled===true,due,alreadyRun,slot,local,config,mode:"dry-run",checkedAt:now.toISOString()};
-  if(record&&due){const run={id:crypto.randomUUID(),slot,status:"dry-run-complete",checkedAt:result.checkedAt,local,mode:"dry-run"};history.runs=[run,...(history.runs||[])].slice(0,100);await writeFile(autopilotHistoryPath,JSON.stringify(history,null,2));result.recorded=run}
+  if(record&&due){const run={id:crypto.randomUUID(),slot,status:source==="automatic"?"auto-trigger-dry-run":"dry-run-complete",checkedAt:result.checkedAt,local,mode:"dry-run",source};history.runs=[run,...(history.runs||[])].slice(0,100);await writeFile(autopilotHistoryPath,JSON.stringify(history,null,2));result.recorded=run}
   return result;
 }
 app.get("/api/autopilot/engine/status",async(req,res)=>{try{res.json(await evaluateAutopilot(new Date(),false))}catch(e){res.status(500).json({error:"autopilot_engine_failed",message:e.message})}});
 app.post("/api/autopilot/engine/dry-run",async(req,res)=>{try{res.json(await evaluateAutopilot(new Date(),true))}catch(e){res.status(500).json({error:"autopilot_dry_run_failed",message:e.message})}});
 app.get("/api/autopilot/history",async(req,res)=>{try{res.json(await readAutopilotHistory())}catch(e){res.status(500).json({error:"autopilot_history_failed",message:e.message})}});
+let autopilotTimerBusy=false;
+async function automaticAutopilotTick(){
+  if(autopilotTimerBusy)return;autopilotTimerBusy=true;
+  try{const result=await evaluateAutopilot(new Date(),true,"automatic");if(result.recorded)console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot)}
+  catch(e){console.error("[autopilot] automatic tick failed",e.message)}
+  finally{autopilotTimerBusy=false}
+}
+setTimeout(automaticAutopilotTick,5000);
+setInterval(automaticAutopilotTick,30000);
 app.listen(port,()=>console.log(`Faceless Studio backend listening on ${port}`));
