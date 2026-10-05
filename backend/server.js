@@ -822,6 +822,16 @@ async function runAutopilotShortsWorker(){
   }catch(e){job.status="shorts-failed";job.stage="shorts-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] shorts failed",job.id,job.error);return job}
 }
 async function cleanupAutopilotTempFiles(projectId){if(!projectId)return 0;const dir=join(storageRoot,projectId);let entries=[];try{entries=await readdir(dir,{withFileTypes:true})}catch{return 0}let removed=0;for(const e of entries){if(!e.isFile())continue;const n=e.name;if(n==="caption-audio.raw"||/^cap-(?:long|short\d+)-\d+\.png$/.test(n)||/^cap-part-(?:long|short\d+)-\d+\.mp4$/.test(n)||/^concat-(?:long|short\d+)\.txt$/.test(n)){try{await rm(join(dir,n),{force:true});removed++}catch{}}}if(removed)console.log("[autopilot] cleaned temp files",projectId,removed);return removed}
+async function cleanupCompletedAutopilotMedia(excludeProjectId){
+  const store=await readAutopilotJobs();let removed=0,bytes=0;
+  const completed=(store.jobs||[]).filter(j=>j.status==="youtube-complete"&&j.stage==="complete"&&j.projectId&&j.projectId!==excludeProjectId).sort((a,b)=>String(a.completedAt||a.updatedAt||"").localeCompare(String(b.completedAt||b.updatedAt||"")));
+  for(const job of completed){const dir=join(storageRoot,job.projectId);let entries=[];try{entries=await readdir(dir,{withFileTypes:true})}catch{continue}
+    for(const e of entries){if(!e.isFile())continue;const n=e.name;if(n==="project.json"||/thumbnail/i.test(n))continue;if(!/\.(mp4|wav|raw|png|jpg|jpeg|webp)$/i.test(n))continue;
+      const p=join(dir,n);try{const s=await stat(p);await rm(p,{force:true});removed++;bytes+=Number(s.size||0)}catch{}}
+    if(removed>=12||bytes>=500*1024*1024)break;
+  }
+  if(removed)console.log("[autopilot] storage guard cleaned completed media",removed,Math.round(bytes/1048576)+"MB");return {removed,bytes};
+}
 async function runAutopilotCaptionsWorker(){
   const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-captions"&&j.status==="shorts-complete");if(!job)return null;
   job.status="running";job.stage="captions-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
@@ -831,7 +841,7 @@ async function runAutopilotCaptionsWorker(){
     if(!r.ok)throw new Error(data?.message||data?.error||("Caption renderer HTTP "+r.status));
     const updated=JSON.parse(await readFile(path,"utf8"));updated.captionTimingReady=true;updated.captionsReady=true;updated.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(updated,null,2));
     job.status="captions-complete";job.stage="awaiting-metadata";job.captionEngine=data.captionEngine||"segmented-overlay";job.captionTiming=data.captionTiming||"unknown";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] captions complete",job.id,job.captionTiming);return job
-  }catch(e){const msg=String(e.message||e),noSpace=/ENOSPC|no space left on device/i.test(msg);if(noSpace){await cleanupAutopilotTempFiles(job.projectId);job.status="shorts-complete";job.stage="awaiting-captions";job.storageRecoveryCount=Number(job.storageRecoveryCount||0)+1;job.lastStorageRecoveryAt=new Date().toISOString();job.error="Storage cleanup performed after ENOSPC; captions queued for retry";job.updatedAt=job.lastStorageRecoveryAt;console.warn("[autopilot] ENOSPC recovery",job.id,job.storageRecoveryCount)}else{job.status="captions-failed";job.stage="captions-error";job.error=msg;job.updatedAt=new Date().toISOString()}await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,msg);return job}
+  }catch(e){const msg=String(e.message||e),noSpace=/ENOSPC|no space left on device/i.test(msg);if(noSpace){await cleanupAutopilotTempFiles(job.projectId);await cleanupCompletedAutopilotMedia(job.projectId);job.status="shorts-complete";job.stage="awaiting-captions";job.storageRecoveryCount=Number(job.storageRecoveryCount||0)+1;job.lastStorageRecoveryAt=new Date().toISOString();job.error="Storage cleanup performed after ENOSPC; captions queued for retry";job.updatedAt=job.lastStorageRecoveryAt;console.warn("[autopilot] ENOSPC recovery",job.id,job.storageRecoveryCount)}else{job.status="captions-failed";job.stage="captions-error";job.error=msg;job.updatedAt=new Date().toISOString()}await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,msg);return job}
   finally{await cleanupAutopilotTempFiles(job.projectId)}
 }
 async function runAutopilotMetadataThumbnailWorker(){
@@ -929,6 +939,7 @@ async function automaticAutopilotTick(){
     const result=await evaluateAutopilot(new Date(),true,"automatic");
     if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}
     await recoverRetryableAutopilotFailures();
+    await cleanupCompletedAutopilotMedia();
     await claimNextQueuedTopicAutomatically();
     await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
     const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
