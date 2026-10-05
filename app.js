@@ -54,6 +54,18 @@ function syncHash(){
   var id=location.hash.slice(1)||"dashboard";
   if(document.getElementById(id))showPage(id);
 }
+async function refreshAutopilotMonitor(){
+  var badge=$("monitorBadge");if(!badge)return;
+  try{
+    var responses=await Promise.all([fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/validation",{cache:"no-store"})]);
+    var health=await responses[0].json(),v=await responses[1].json();if(!responses[0].ok||!responses[1].ok)throw new Error("Monitor unavailable");
+    $("monitorCompleted").textContent=v.counts?.completed??0;$("monitorActive").textContent=v.counts?.active??health.activeJobs??0;$("monitorFailed").textContent=v.counts?.failed??0;$("monitorQueued").textContent=v.counts?.queued??0;
+    badge.textContent=v.passed?"V6.0 READY ✓":(health.healthy?"ATTENTION":"UNHEALTHY");var latest=v.latestCompleted;
+    $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+" • completed "+new Date(latest.completedAt).toLocaleString()):"No completed production yet.";
+    var checks=v.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓";
+  }catch(e){badge.textContent="OFFLINE";$("monitorLatest").textContent="Autopilot monitor could not reach the backend.";$("monitorChecks").textContent=e.message||String(e)}
+}
+refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,30000);
 window.addEventListener("hashchange",syncHash);
 async function loadProjectHistory(){
   var box=$("projects");if(!box)return;box.classList.remove("empty");box.innerHTML='<div class="card"><p class="muted">Loading saved projects…</p></div>';
