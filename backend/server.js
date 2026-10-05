@@ -167,7 +167,7 @@ app.post("/api/render/mp4",async(req,res)=>{
   const scenes=Array.isArray(req.body?.scenes)?req.body.scenes:[];
   const audio=String(req.body?.audio||"");
   if(!scenes.length||!audio)return res.status(400).json({error:"render_assets_required",message:"Scenes and voice audio are required."});
-  const dir=await mkdtemp(join(tmpdir(),"faceless-"));
+  const scratchRoot=join(storageRoot,".scratch");await mkdir(scratchRoot,{recursive:true});const dir=await mkdtemp(join(scratchRoot,"faceless-"));
   try{
     const durations=[];
     for(let i=0;i<scenes.length;i++){
@@ -242,12 +242,12 @@ app.post("/api/captions/analyze",async(req,res)=>{
 app.post("/api/render/captions",async(req,res)=>{
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),narration=String(req.body?.narration||"").trim();
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
-  const projectDir=join(storageRoot,projectId),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);
+  const projectDir=join(storageRoot,projectId),captionScratch=join(projectDir,".caption-scratch"),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);await rm(captionScratch,{recursive:true,force:true}).catch(()=>{});await mkdir(captionScratch,{recursive:true});
   const xml=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const ff=(args,label)=>new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))))});
   const getSpeechWindows=async(audioPath,duration,count)=>{
     if(!count)return [];
-    const raw=join(projectDir,"caption-audio.raw");
+    const raw=join(captionScratch,"caption-audio.raw");
     try{
       await ff(["-y","-i",audioPath,"-ac","1","-ar","8000","-f","s16le",raw],"caption audio analysis");
       const buf=await readFile(raw),samples=new Int16Array(buf.buffer,buf.byteOffset,Math.floor(buf.length/2)),rate=8000,frame=400;
@@ -268,12 +268,12 @@ app.post("/api/render/captions",async(req,res)=>{
     for(let i=0;i<chunks.length;i++){
       let fs=font,canvas=createCanvas(w,rowH),ctx=canvas.getContext("2d"),lines;do{ctx.font="700 "+fs+"px CaptionInter";lines=wrap(ctx,chunks[i],maxTextWidth);if(lines.length<=2&&lines.every(x=>ctx.measureText(x).width<=maxTextWidth))break;fs-=2}while(fs>22);
       ctx.clearRect(0,0,w,rowH);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";const lh=Math.round(fs*1.18),top=rowH/2-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
-      const img=join(projectDir,`cap-${label}-${i}.png`),part=join(projectDir,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
+      const img=join(captionScratch,`cap-${label}-${i}.png`),part=join(captionScratch,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
       const st=Math.max(0,bounds[i]),len=Math.max(.18,bounds[i+1]-bounds[i]);
       await ff(["-y","-ss",st.toFixed(3),"-t",len.toFixed(3),"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" segment "+(i+1));
       await rm(img,{force:true}).catch(()=>{});parts.push(part);
     }
-    const list=join(projectDir,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
+    const list=join(captionScratch,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
     await ff(["-y","-fflags","+genpts","-f","concat","-safe","0","-i",list,"-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-af","aresample=async=1:first_pts=0","-movflags","+faststart",out],label+" concat");
     await rm(list,{force:true}).catch(()=>{});await Promise.all(parts.map(p=>rm(p,{force:true}).catch(()=>{})));
   };
@@ -310,6 +310,7 @@ app.post("/api/render/captions",async(req,res)=>{
     const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
     res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
+  finally{await rm(captionScratch,{recursive:true,force:true}).catch(()=>{})}
 });
 
 const youtubeTokenPath=join(storageRoot,"youtube-oauth.json");
