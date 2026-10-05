@@ -898,12 +898,13 @@ async function recoverInterruptedAutopilotJobs(){
   if(changed){await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] recovered interrupted jobs safely")}
   return changed;
 }
-let autopilotTimerBusy=false;
+let autopilotTimerBusy=false,autopilotLastTickAt=null,autopilotLastTickOk=null,autopilotLastTickError=null;
 const autopilotTerminalStages=new Set(["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"]);
 const autopilotTerminalStatuses=new Set(["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"]);
 function isAutopilotJobActive(job){
   return Boolean(job&&(job.title||job.topicId||job.projectId)&&!autopilotTerminalStages.has(String(job.stage||""))&&!autopilotTerminalStatuses.has(String(job.status||"")));
 }
+app.get("/api/autopilot/health",async(req,res)=>{try{const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null,age=autopilotLastTickAt?Date.now()-Date.parse(autopilotLastTickAt):null;res.json({healthy:autopilotLastTickOk!==false&&(age===null||age<120000),busy:autopilotTimerBusy,lastTickAt:autopilotLastTickAt,lastTickOk:autopilotLastTickOk,lastError:autopilotLastTickError,activeJobs:active.length,latestJob:latest?{id:latest.id,status:latest.status,stage:latest.stage,title:latest.title||null}:null})}catch(e){res.status(500).json({healthy:false,error:"autopilot_health_failed",message:e.message})}});
 async function claimNextQueuedTopicAutomatically(){
   const jobs=await cleanupAutopilotPlaceholders(await readAutopilotJobs());
   if((jobs.jobs||[]).some(isAutopilotJobActive))return null;
@@ -924,9 +925,10 @@ async function automaticAutopilotTick(){
     await claimNextQueuedTopicAutomatically();
     await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
     const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
-    console.log("[autopilot] health",JSON.stringify({tickStartedAt,activeJobs:active.length,latestJobId:latest?.id||null,latestStatus:latest?.status||null,latestStage:latest?.stage||null}));
+    autopilotLastTickAt=new Date().toISOString();autopilotLastTickOk=true;autopilotLastTickError=null;
+    console.log("[autopilot] health",JSON.stringify({tickStartedAt,lastTickAt:autopilotLastTickAt,activeJobs:active.length,latestJobId:latest?.id||null,latestStatus:latest?.status||null,latestStage:latest?.stage||null}));
   }
-  catch(e){console.error("[autopilot] automatic tick failed",e.message)}
+  catch(e){autopilotLastTickAt=new Date().toISOString();autopilotLastTickOk=false;autopilotLastTickError=String(e.message||e);console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
 }
 recoverInterruptedAutopilotJobs().catch(e=>console.error("[autopilot] recovery failed",e.message)).finally(()=>setTimeout(automaticAutopilotTick,5000));
