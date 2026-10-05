@@ -280,7 +280,8 @@ async function saveAutopilotPlan(){
   try{var payload={enabled:document.getElementById("autopilotPlanEnabled").checked,days:days,time:document.getElementById("autopilotPlanTime").value,timeZone:document.getElementById("autopilotPlanTimezone").value,shortIntervalDays:Number(document.getElementById("autopilotPlanInterval").value)},r=await fetch(API_BASE+"/api/autopilot/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json();if(!r.ok)throw new Error(d.error||"Save failed");status.textContent=(d.config.enabled?"Plan enabled ✓":"Plan saved • disabled")+" • "+d.config.days.join(", ")+" "+d.config.time+" "+d.config.timeZone+" • config-only safety mode";btn.textContent="Save Autopilot Plan"}catch(e){status.textContent="Save failed: "+e.message;btn.textContent="Retry Save"}finally{btn.disabled=false}
 }
 var saveAutopilotPlanButton=document.getElementById("saveAutopilotPlan");if(saveAutopilotPlanButton)saveAutopilotPlanButton.onclick=function(e){e.preventDefault();saveAutopilotPlan()};
-loadAutopilotPlan();async function refreshAutopilotEngine(){
+loadAutopilotPlan();async function refreshAutopilotHealth(){var el=document.getElementById("autopilotHealthStatus");if(!el)return;try{var r=await fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"health unavailable");el.textContent=(d.healthy?" • 🟢 Autopilot Healthy":" • 🔴 Autopilot Needs Attention")+" • "+d.activeJobs+" active"+(d.busy?" • working":"")}catch(e){el.textContent=" • ⚪ Health unavailable"}}
+async function refreshAutopilotEngine(){
   var state=document.getElementById("autopilotEngineState"),status=document.getElementById("autopilotEngineStatus"),history=document.getElementById("autopilotRunHistory");if(!state)return;
   try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),e=await er.json();if(!er.ok)throw new Error(e.error||"Engine unavailable");state.textContent=!e.enabled?"Engine armed • plan disabled":e.due?"Due now ✓":"Engine armed • waiting";status.textContent="Local scheduler: "+e.local.day+" "+e.local.date+" "+e.local.time+" • target "+e.config.time+" "+e.config.timeZone+" • dry-run only";
     var hr=await fetch(API_BASE+"/api/autopilot/history",{cache:"no-store"}),h=await hr.json(),runs=h.runs||[];history.innerHTML=runs.length?runs.slice(0,5).map(function(x){return '<div class="autopilot-history-row"><strong>'+escapeHtml(x.status)+'</strong><span>'+escapeHtml(x.slot)+'</span></div>'}).join(""):'<span class="muted">No dry runs recorded yet.</span>';
@@ -305,8 +306,8 @@ async function runNextAutopilotTopic(){
 var addAutopilotTopicsButton=document.getElementById("addAutopilotTopics");if(addAutopilotTopicsButton)addAutopilotTopicsButton.onclick=function(e){e.preventDefault();addAutopilotTopics()};
 var runNextAutopilotButton=document.getElementById("runNextAutopilotTopic");if(runNextAutopilotButton)runNextAutopilotButton.onclick=function(e){e.preventDefault();runNextAutopilotTopic()};
 var dryRunButton=document.getElementById("runAutopilotDryRun");if(dryRunButton)dryRunButton.onclick=function(e){e.preventDefault();runAutopilotDryRun()};
-refreshAutopilotEngine();
-setInterval(function(){if(location.hash==="#scheduler")refreshAutopilotEngine()},30000);
+refreshAutopilotEngine();refreshAutopilotHealth();
+setInterval(function(){if(location.hash==="#scheduler"){refreshAutopilotEngine();refreshAutopilotHealth()}},30000);
 
 syncHash();
 async function restorePersistentProject(){
