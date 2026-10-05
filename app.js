@@ -57,17 +57,19 @@ function syncHash(){
 async function refreshAutopilotMonitor(){
   var badge=$("monitorBadge");if(!badge)return;
   try{
-    var settled=await Promise.allSettled([fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/validation",{cache:"no-store"})]);
+    var settled=await Promise.allSettled([fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/validation",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/monitor",{cache:"no-store"})]);
     var health=null,v=null;
     if(settled[0].status==="fulfilled"&&settled[0].value.ok)health=await settled[0].value.json();
     if(settled[1].status==="fulfilled"&&settled[1].value.ok)v=await settled[1].value.json();
-    if(!health&&!v)throw new Error("Backend temporarily unavailable");
+    var monitor=null;if(settled[2].status==="fulfilled"&&settled[2].value.ok)monitor=await settled[2].value.json();
+    if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
     $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";
     badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
     var latest=v?.latestCompleted||health?.latestJob;
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
     var checks=v?.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=v?(bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓"):"Health online • validation will retry automatically.";
+    if(monitor){var s=monitor.storage||{},gb=function(n){return Number.isFinite(Number(n))?(Number(n)/1073741824).toFixed(2)+" GB":"—"};$("monitorStorage").textContent=s.usedPercent!=null?s.usedPercent+"%":"—";$("monitorStorage").title=s.totalBytes?gb(s.usedBytes)+" / "+gb(s.totalBytes):"";$("monitorTts").textContent=monitor.tts?.provider||"unknown";$("monitorCost").textContent=monitor.tts?.usageEquivalentUsd!=null?"$"+Number(monitor.tts.usageEquivalentUsd).toFixed(6):"—";var r=monitor.recovery;$("monitorRecovery").textContent=r?("Last storage recovery: "+(r.title||r.jobId)+" • "+new Date(r.at).toLocaleString()+(r.version?" • "+r.version:"")):"Storage recovery: none recorded";}
   }catch(e){badge.textContent="RETRYING";$("monitorLatest").textContent="Backend is waking up or connection changed. Retrying automatically…";$("monitorChecks").textContent="Last dashboard values are kept until the backend responds."}
 }
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
