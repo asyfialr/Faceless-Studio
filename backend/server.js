@@ -918,10 +918,13 @@ async function claimNextQueuedTopicAutomatically(){
 async function automaticAutopilotTick(){
   if(autopilotTimerBusy)return;autopilotTimerBusy=true;
   try{
+    const tickStartedAt=new Date().toISOString();
     const result=await evaluateAutopilot(new Date(),true,"automatic");
     if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}
     await claimNextQueuedTopicAutomatically();
     await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
+    const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
+    console.log("[autopilot] health",JSON.stringify({tickStartedAt,activeJobs:active.length,latestJobId:latest?.id||null,latestStatus:latest?.status||null,latestStage:latest?.stage||null}));
   }
   catch(e){console.error("[autopilot] automatic tick failed",e.message)}
   finally{autopilotTimerBusy=false}
