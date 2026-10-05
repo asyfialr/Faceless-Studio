@@ -745,7 +745,9 @@ async function runAutopilotVoiceWorker(){
     console.warn("[autopilot] migrated legacy voice rate-limit failure",failed.id,failed.voiceRetryAt);
     await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   }
-  const job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete"&&(!j.voiceRetryAt||Date.parse(j.voiceRetryAt)<=now));if(!job)return null;
+  const cloudflareReady=Boolean(process.env.CLOUDFLARE_ACCOUNT_ID&&process.env.CLOUDFLARE_AI_TOKEN);
+  const job=(store.jobs||[]).find(j=>j.stage==="awaiting-voice"&&j.status==="script-complete"&&(!j.voiceRetryAt||Date.parse(j.voiceRetryAt)<=now||(cloudflareReady&&j.voiceRateLimited)));if(!job)return null;
+  if(cloudflareReady&&job.voiceRateLimited){console.log("[autopilot] bypassing Gemini retry timer; Cloudflare TTS available",job.id);delete job.voiceRetryAt;}
   job.status="running";job.stage="voice-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVoice(meta.narration);await writeFile(join(dir,"voice.wav"),out.audio);
