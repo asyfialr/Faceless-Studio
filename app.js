@@ -281,6 +281,7 @@ async function saveAutopilotPlan(){
 }
 var saveAutopilotPlanButton=document.getElementById("saveAutopilotPlan");if(saveAutopilotPlanButton)saveAutopilotPlanButton.onclick=function(e){e.preventDefault();saveAutopilotPlan()};
 loadAutopilotPlan();async function refreshAutopilotHealth(){var el=document.getElementById("autopilotHealthStatus");if(!el)return;try{var r=await fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"health unavailable");el.textContent=(d.healthy?" • 🟢 Autopilot Healthy":" • 🔴 Autopilot Needs Attention")+" • "+d.activeJobs+" active"+(d.busy?" • working":"")}catch(e){el.textContent=" • ⚪ Health unavailable"}}
+async function refreshAutopilotStats(){var el=document.getElementById("autopilotProductionStats");if(!el)return;try{var r=await fetch(API_BASE+"/api/autopilot/stats",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"stats unavailable");el.textContent=d.completedJobs+" productions • "+d.totalVideos+" videos • "+Math.round(d.totalDurationSeconds)+"s • "+d.totalVisuals+" visuals • TTS usage $"+Number(d.ttsUsageEquivalentUsd||0).toFixed(6)+(d.freeTierMayCover?" • Free tier may cover ✓":"")}catch(e){el.textContent="Production stats unavailable"}}
 async function refreshAutopilotEngine(){
   var state=document.getElementById("autopilotEngineState"),status=document.getElementById("autopilotEngineStatus"),history=document.getElementById("autopilotRunHistory");if(!state)return;
   try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),e=await er.json();if(!er.ok)throw new Error(e.error||"Engine unavailable");state.textContent=!e.enabled?"Engine armed • plan disabled":e.due?"Due now ✓":"Engine armed • waiting";status.textContent="Recurring schedule: "+e.local.day+" "+e.local.date+" "+e.local.time+" • target "+e.config.time+" "+e.config.timeZone+" • Queue worker: autonomous";
@@ -306,8 +307,8 @@ async function runNextAutopilotTopic(){
 var addAutopilotTopicsButton=document.getElementById("addAutopilotTopics");if(addAutopilotTopicsButton)addAutopilotTopicsButton.onclick=function(e){e.preventDefault();addAutopilotTopics()};
 var runNextAutopilotButton=document.getElementById("runNextAutopilotTopic");if(runNextAutopilotButton)runNextAutopilotButton.onclick=function(e){e.preventDefault();runNextAutopilotTopic()};
 var dryRunButton=document.getElementById("runAutopilotDryRun");if(dryRunButton)dryRunButton.onclick=function(e){e.preventDefault();runAutopilotDryRun()};
-refreshAutopilotEngine();refreshAutopilotHealth();
-setInterval(function(){if(location.hash==="#scheduler"){refreshAutopilotEngine();refreshAutopilotHealth()}},30000);
+refreshAutopilotEngine();refreshAutopilotHealth();refreshAutopilotStats();
+setInterval(function(){if(location.hash==="#scheduler"){refreshAutopilotEngine();refreshAutopilotHealth();refreshAutopilotStats()}},30000);
 
 syncHash();
 async function restorePersistentProject(){
