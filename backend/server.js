@@ -691,6 +691,16 @@ async function runAutopilotScriptWorker(){
     console.log("[autopilot] script complete",job.id,projectId);return job;
   }catch(e){job.status="script-failed";job.stage="script-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] script failed",job.id,job.error);return job}
 }
+async function generateCloudflareVoice(text){
+  const accountId=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_AI_TOKEN;if(!accountId||!token)throw new Error("Cloudflare Workers AI credentials not configured");
+  const model=process.env.CLOUDFLARE_TTS_MODEL||"@cf/myshell-ai/melotts",r=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(accountId)+"/ai/run/"+model,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({prompt:String(text||"").slice(0,4500),lang:"en"})});
+  if(!r.ok){let data={};try{data=await r.json()}catch{}throw new Error("Cloudflare TTS: "+(data?.errors?.[0]?.message||data?.error||("HTTP "+r.status)))}
+  const contentType=String(r.headers.get("content-type")||"");
+  if(contentType.includes("audio/"))return {provider:"cloudflare",model,audio:Buffer.from(await r.arrayBuffer())};
+  const data=await r.json(),encoded=data?.result?.audio||data?.audio;
+  if(!encoded)throw new Error("Cloudflare TTS returned no audio");
+  return {provider:"cloudflare",model,audio:Buffer.from(String(encoded).replace(/^data:audio\/[^;]+;base64,/,""),"base64")};
+}
 async function generateGoogleCloudVoice(text){
   const key=process.env.GOOGLE_CLOUD_TTS_API_KEY;if(!key)throw new Error("GOOGLE_CLOUD_TTS_API_KEY not configured");
   const languageCode=process.env.GOOGLE_CLOUD_TTS_LANGUAGE||"en-US",voiceName=process.env.GOOGLE_CLOUD_TTS_VOICE||"en-US-Wavenet-D";
@@ -706,9 +716,14 @@ async function generateGeminiVoice(text){
 }
 async function generateAutopilotVoice(text){
   const preference=String(process.env.AUTOPILOT_TTS_PROVIDER||"auto").toLowerCase(),providers=[];
-  if(preference==="google-cloud")providers.push(["google-cloud",generateGoogleCloudVoice]);
+  if(preference==="cloudflare")providers.push(["cloudflare",generateCloudflareVoice]);
+  else if(preference==="google-cloud")providers.push(["google-cloud",generateGoogleCloudVoice]);
   else if(preference==="gemini")providers.push(["gemini",generateGeminiVoice]);
-  else{if(process.env.GOOGLE_CLOUD_TTS_API_KEY)providers.push(["google-cloud",generateGoogleCloudVoice]);providers.push(["gemini",generateGeminiVoice]);}
+  else{
+    if(process.env.CLOUDFLARE_ACCOUNT_ID&&process.env.CLOUDFLARE_AI_TOKEN)providers.push(["cloudflare",generateCloudflareVoice]);
+    if(process.env.GOOGLE_CLOUD_TTS_API_KEY)providers.push(["google-cloud",generateGoogleCloudVoice]);
+    providers.push(["gemini",generateGeminiVoice]);
+  }
   let lastError="No TTS provider available",errors=[];
   for(const [name,fn] of providers)try{return await fn(text)}catch(e){lastError=String(e.message||e);errors.push(name+": "+lastError);console.warn("[autopilot] TTS provider failed",name,lastError)}
   throw new Error(errors.join(" | ")||lastError);
