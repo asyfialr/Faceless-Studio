@@ -691,10 +691,27 @@ async function runAutopilotScriptWorker(){
     console.log("[autopilot] script complete",job.id,projectId);return job;
   }catch(e){job.status="script-failed";job.stage="script-error";job.error=String(e.message||e);job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] script failed",job.id,job.error);return job}
 }
-async function generateAutopilotVoice(text){
+async function generateGoogleCloudVoice(text){
+  const key=process.env.GOOGLE_CLOUD_TTS_API_KEY;if(!key)throw new Error("GOOGLE_CLOUD_TTS_API_KEY not configured");
+  const languageCode=process.env.GOOGLE_CLOUD_TTS_LANGUAGE||"en-US",voiceName=process.env.GOOGLE_CLOUD_TTS_VOICE||"en-US-Wavenet-D";
+  const r=await fetch("https://texttospeech.googleapis.com/v1/text:synthesize?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({input:{text:String(text||"").slice(0,4500)},voice:{languageCode,name:voiceName},audioConfig:{audioEncoding:"LINEAR16",speakingRate:1.0,pitch:0}})}),data=await r.json();
+  if(!r.ok)throw new Error("Google Cloud TTS: "+(data?.error?.message||("HTTP "+r.status)));
+  if(!data?.audioContent)throw new Error("Google Cloud TTS returned no audio");
+  return {provider:"google-cloud",model:voiceName,audio:Buffer.from(data.audioContent,"base64")};
+}
+async function generateGeminiVoice(text){
   const geminiKey=process.env.GEMINI_API_KEY;if(!geminiKey)throw new Error("GEMINI_API_KEY not configured");
   const model=process.env.GEMINI_TTS_MODEL||"gemini-3.8-flash-lite-tts",r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"x-goog-api-key":geminiKey,"Content-Type":"application/json"},body:JSON.stringify({model,input:[{type:"user_input",content:[{type:"text",text:String(text||"").slice(0,4000),annotations:[{type:"speech_metadata",style:"Natural confident American English YouTube documentary narration. Clear, warm, engaging, medium pace."}]}]}],response_format:{type:"audio"},generation_config:{speech_config:[{voice:"Kore"}]}})}),data=await r.json();
-  if(!r.ok)throw new Error(data?.error?.message||"Gemini TTS request failed");const audio=data?.steps?.flatMap(step=>step?.content||[]).filter(item=>item?.type==="audio"&&item?.data).at(-1)?.data;if(!audio)throw new Error("Gemini TTS returned no audio");return {model,audio:Buffer.from(audio,"base64")};
+  if(!r.ok)throw new Error(data?.error?.message||"Gemini TTS request failed");const audio=data?.steps?.flatMap(step=>step?.content||[]).filter(item=>item?.type==="audio"&&item?.data).at(-1)?.data;if(!audio)throw new Error("Gemini TTS returned no audio");return {provider:"gemini",model,audio:Buffer.from(audio,"base64")};
+}
+async function generateAutopilotVoice(text){
+  const preference=String(process.env.AUTOPILOT_TTS_PROVIDER||"auto").toLowerCase(),providers=[];
+  if(preference==="google-cloud")providers.push(["google-cloud",generateGoogleCloudVoice]);
+  else if(preference==="gemini")providers.push(["gemini",generateGeminiVoice]);
+  else{if(process.env.GOOGLE_CLOUD_TTS_API_KEY)providers.push(["google-cloud",generateGoogleCloudVoice]);providers.push(["gemini",generateGeminiVoice]);}
+  let lastError="No TTS provider available",errors=[];
+  for(const [name,fn] of providers)try{return await fn(text)}catch(e){lastError=String(e.message||e);errors.push(name+": "+lastError);console.warn("[autopilot] TTS provider failed",name,lastError)}
+  throw new Error(errors.join(" | ")||lastError);
 }
 function autopilotRetryDelayMs(message){
   const s=String(message||"");
@@ -717,8 +734,8 @@ async function runAutopilotVoiceWorker(){
   job.status="running";job.stage="voice-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const dir=join(storageRoot,job.projectId),path=join(dir,"project.json"),meta=JSON.parse(await readFile(path,"utf8")),out=await generateAutopilotVoice(meta.narration);await writeFile(join(dir,"voice.wav"),out.audio);
-    meta.voiceStored=true;meta.voiceUrl="/media/"+job.projectId+"/voice.wav";meta.voiceModel=out.model;meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));
-    job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;delete job.voiceRetryAt;delete job.voiceRateLimited;delete job.error;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
+    meta.voiceStored=true;meta.voiceUrl="/media/"+job.projectId+"/voice.wav";meta.voiceModel=out.model;meta.voiceProvider=out.provider||"unknown";meta.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(meta,null,2));
+    job.status="voice-complete";job.stage="awaiting-visual-plan";job.voiceModel=out.model;job.voiceProvider=out.provider||"unknown";delete job.voiceRetryAt;delete job.voiceRateLimited;delete job.error;job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] voice complete",job.id,job.projectId);return job;
   }catch(e){
     const message=String(e.message||e),delay=autopilotRetryDelayMs(message),rateLimited=/rate limit|quota|resource exhausted|too many requests/i.test(message);
     if(rateLimited){
