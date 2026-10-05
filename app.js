@@ -57,15 +57,20 @@ function syncHash(){
 async function refreshAutopilotMonitor(){
   var badge=$("monitorBadge");if(!badge)return;
   try{
-    var responses=await Promise.all([fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/validation",{cache:"no-store"})]);
-    var health=await responses[0].json(),v=await responses[1].json();if(!responses[0].ok||!responses[1].ok)throw new Error("Monitor unavailable");
-    $("monitorCompleted").textContent=v.counts?.completed??0;$("monitorActive").textContent=v.counts?.active??health.activeJobs??0;$("monitorFailed").textContent=v.counts?.failed??0;$("monitorQueued").textContent=v.counts?.queued??0;
-    badge.textContent=v.passed?"V6.0 READY ✓":(health.healthy?"ATTENTION":"UNHEALTHY");var latest=v.latestCompleted;
-    $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+" • completed "+new Date(latest.completedAt).toLocaleString()):"No completed production yet.";
-    var checks=v.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓";
-  }catch(e){badge.textContent="OFFLINE";$("monitorLatest").textContent="Autopilot monitor could not reach the backend.";$("monitorChecks").textContent=e.message||String(e)}
+    var settled=await Promise.allSettled([fetch(API_BASE+"/api/autopilot/health",{cache:"no-store"}),fetch(API_BASE+"/api/autopilot/validation",{cache:"no-store"})]);
+    var health=null,v=null;
+    if(settled[0].status==="fulfilled"&&settled[0].value.ok)health=await settled[0].value.json();
+    if(settled[1].status==="fulfilled"&&settled[1].value.ok)v=await settled[1].value.json();
+    if(!health&&!v)throw new Error("Backend temporarily unavailable");
+    var counts=v?.counts||{};
+    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";
+    badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
+    var latest=v?.latestCompleted||health?.latestJob;
+    $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
+    var checks=v?.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=v?(bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓"):"Health online • validation will retry automatically.";
+  }catch(e){badge.textContent="RETRYING";$("monitorLatest").textContent="Backend is waking up or connection changed. Retrying automatically…";$("monitorChecks").textContent="Last dashboard values are kept until the backend responds."}
 }
-refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,30000);
+refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 async function loadProjectHistory(){
   var box=$("projects");if(!box)return;box.classList.remove("empty");box.innerHTML='<div class="card"><p class="muted">Loading saved projects…</p></div>';
