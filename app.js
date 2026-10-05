@@ -72,6 +72,17 @@ async function refreshAutopilotMonitor(){
     if(monitor){var s=monitor.storage||{},gb=function(n){return Number.isFinite(Number(n))?(Number(n)/1073741824).toFixed(2)+" GB":"—"};$("monitorStorage").textContent=s.usedPercent!=null?s.usedPercent+"%":"—";$("monitorStorage").title=s.totalBytes?gb(s.usedBytes)+" / "+gb(s.totalBytes):"";$("monitorTts").textContent=monitor.tts?.provider||"unknown";$("monitorCost").textContent=monitor.tts?.usageEquivalentUsd!=null?"$"+Number(monitor.tts.usageEquivalentUsd).toFixed(6):"—";var r=monitor.recovery;$("monitorRecovery").textContent=r?("Last storage recovery: "+(r.title||r.jobId)+" • "+new Date(r.at).toLocaleString()+(r.version?" • "+r.version:"")):"Storage recovery: none recorded";}
   }catch(e){badge.textContent="RETRYING";$("monitorLatest").textContent="Backend is waking up or connection changed. Retrying automatically…";$("monitorChecks").textContent="Last dashboard values are kept until the backend responds."}
 }
+async function refreshAutopilotEngine(){
+  var out=$("monitorEngine");if(!out)return;
+  try{var r=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);out.textContent="Autopilot engine: "+(d.enabled?"RUNNING ✓":"PAUSED")+" • "+(d.config?.time||"19:00")+" "+(d.config?.timeZone||"America/New_York");$("monitorPause").disabled=!d.enabled;$("monitorResume").disabled=!!d.enabled}catch(e){out.textContent="Autopilot engine: status unavailable"}
+}
+async function setAutopilotEngine(action){
+  var p=$("monitorPause"),r=$("monitorResume");p.disabled=true;r.disabled=true;
+  try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e)}
+}
+if($("monitorPause"))$("monitorPause").onclick=function(){setAutopilotEngine("pause")};
+if($("monitorResume"))$("monitorResume").onclick=function(){setAutopilotEngine("resume")};
+refreshAutopilotEngine();setInterval(refreshAutopilotEngine,30000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 async function loadProjectHistory(){
