@@ -89,21 +89,27 @@ bindAutopilotEngineControls();
 setTimeout(refreshAutopilotEngine,1500);
 setInterval(refreshAutopilotEngine,30000);
 async function refreshQueueControl(){
-  var next=$("queueNext"),count=$("queueControlCount");if(!next)return;
+  var next=$("queueNext"),list=$("queueControlList");if(!next)return;
   try{
     var r=await fetch(API_BASE+"/api/autopilot/queue/control?ts="+Date.now(),{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);
     next.textContent=d.next?"Next topic: "+d.next.title:"Next topic: queue empty ✓";
-    next.dataset.topicId=d.next?.id||"";
-    $("queuePrioritize").disabled=!d.next;$("queueSkip").disabled=!d.next;
-  }catch(e){next.textContent="Next topic: unavailable";count.textContent="Queue control will retry automatically."}
+    if(list){
+      list.innerHTML="";
+      (d.topics||[]).forEach(function(t,index){
+        var row=document.createElement("div");row.className="script-actions";row.style.marginTop="6px";
+        var label=document.createElement("span");label.className="muted";label.style.flex="1";label.textContent=(index+1)+". "+t.title;
+        var prioritize=document.createElement("button");prioritize.className="secondary";prioritize.type="button";prioritize.textContent=index===0?"Next":"Prioritize";prioritize.disabled=index===0;prioritize.onclick=function(){queueTopicAction(t.id,"prioritize")};
+        var skip=document.createElement("button");skip.className="secondary";skip.type="button";skip.textContent="Skip";skip.onclick=function(){queueTopicAction(t.id,"skip")};
+        row.append(label,prioritize,skip);list.appendChild(row);
+      });
+      if(!(d.topics||[]).length)list.innerHTML='<small class="muted">No queued topics.</small>';
+    }
+  }catch(e){next.textContent="Next topic: unavailable";if(list)list.innerHTML='<small class="muted">Queue controls will retry automatically.</small>'}
 }
-async function queueAction(action){
-  var id=$("queueNext")?.dataset.topicId;if(!id)return;
-  $("queuePrioritize").disabled=true;$("queueSkip").disabled=true;
-  try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){$("queueControlCount").textContent="Queue action failed: "+(e.message||e)}
+async function queueTopicAction(id,action){
+  if(!id)return;
+  try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){var out=$("queueControlCount");if(out)out.textContent="Queue action failed: "+(e.message||e)}
 }
-if($("queuePrioritize"))$("queuePrioritize").onclick=function(){queueAction("prioritize")};
-if($("queueSkip"))$("queueSkip").onclick=function(){queueAction("skip")};
 refreshQueueControl();setInterval(refreshQueueControl,10000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
