@@ -39,6 +39,36 @@ app.get("/api/capabilities",(req,res)=>res.json({
   storage:false
 }));
 
+app.post("/api/ai/ideas",async(req,res)=>{
+  const geminiKey=process.env.GEMINI_API_KEY,openaiKey=process.env.OPENAI_API_KEY;
+  const niche=String(req.body?.niche||"AI & Technology").trim().slice(0,120),audience=String(req.body?.audience||"United States").trim().slice(0,80);
+  if(!geminiKey&&!openaiKey)return res.status(503).json({error:"ai_not_configured",message:"No AI provider is configured."});
+  const prompt="Generate exactly 4 original faceless YouTube video ideas for the niche: "+niche+"\nTarget audience: "+audience+"\nPrioritize evergreen or timely-interest concepts with a clear curiosity gap, useful payoff, and strong potential for one Long video plus three distinct Shorts. Avoid fake urgency, unsupported claims, repetitive angles, and generic titles. Return ONLY valid JSON with key ideas, an array of exactly 4 objects. Each object must have title (max 85 characters), angle (one concise sentence), and hook (one concise sentence).";
+  async function normalize(raw,provider,model){
+    const parsed=JSON.parse(raw),items=Array.isArray(parsed?.ideas)?parsed.ideas.slice(0,4):[];
+    const ideas=items.map(x=>({title:String(x?.title||"").trim().slice(0,85),angle:String(x?.angle||"").trim().slice(0,220),hook:String(x?.hook||"").trim().slice(0,220)})).filter(x=>x.title);
+    if(ideas.length!==4)throw new Error("AI provider did not return exactly 4 valid ideas");
+    return {ok:true,provider,model:model||null,ideas};
+  }
+  if(geminiKey)try{
+    const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);
+    let lastError=null;
+    for(const model of models){
+      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})});
+      const data=await r.json();
+      if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";return res.json(await normalize(raw,"gemini",model))}
+      lastError=data?.error?.message||"Gemini request failed";
+    }
+    if(!openaiKey)return res.status(502).json({error:"gemini_error",details:lastError});
+  }catch(e){if(!openaiKey)return res.status(500).json({error:"idea_generation_failed",message:e.message})}
+  try{
+    const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-5-mini",input:prompt,text:{format:{type:"json_object"}}})}),data=await r.json();
+    if(!r.ok)return res.status(502).json({error:"ai_provider_error",details:data?.error?.message||"OpenAI request failed"});
+    const raw=data.output_text||data.output?.flatMap(x=>x.content||[]).map(x=>x.text||"").join("")||"";
+    return res.json(await normalize(raw,"openai",process.env.OPENAI_MODEL||"gpt-5-mini"));
+  }catch(e){return res.status(500).json({error:"idea_generation_failed",message:e.message})}
+});
+
 app.post("/api/ai/script",async(req,res)=>{
   const geminiKey=process.env.GEMINI_API_KEY;
   const openaiKey=process.env.OPENAI_API_KEY;
