@@ -114,19 +114,33 @@ refreshQueueControl();setInterval(refreshQueueControl,10000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 if(location.hash==="#projectsPage")setTimeout(function(){loadProjectHistory();loadProductionAudit()},0);
+var productionAuditItems=[];
+function renderProductionAudit(){
+  var box=$("auditHistory"),count=$("auditCount");if(!box)return;
+  var q=String($("auditSearch")?.value||"").trim().toLowerCase(),filter=$("auditFilter")?.value||"all";
+  var items=productionAuditItems.filter(function(x){
+    var failed=Boolean(x.error)||/failed|error/i.test(String(x.status||"")+" "+String(x.stage||""));
+    var ok=filter==="all"||(filter==="success"&&x.youtubeVerified)||(filter==="recovered"&&x.recovered)||(filter==="failed"&&failed);
+    return ok&&(!q||String(x.title||"").toLowerCase().includes(q));
+  });
+  if(count)count.textContent=items.length+" / "+productionAuditItems.length+" records";
+  box.innerHTML=items.length?items.map(function(x){
+    var when=x.completedAt||x.updatedAt||x.createdAt,mins=x.durationSeconds?Math.round(x.durationSeconds/6)/10:null;
+    var state=x.youtubeVerified?"YouTube Verified ✓":(x.status||x.stage||"In progress");
+    var meta=(when?escapeHtml(new Date(when).toLocaleString()):"Time unavailable")+(mins!=null?" • "+mins+" min":"")+(x.voiceProvider?" • TTS "+escapeHtml(x.voiceProvider):"")+" • "+Number(x.visuals||0)+" visuals • "+Number(x.videos||0)+" videos"+(x.recovered?" • Recovered ✓":"");
+    var cost=x.costEstimate!=null?'<small class="muted">TTS usage est. $'+Number(x.costEstimate).toFixed(6)+'</small>':"";
+    var err=x.error?'<p class="project-attention">Error: '+escapeHtml(String(x.error))+'</p>':"";
+    return '<article class="card project-history"><div><p class="eyebrow">'+escapeHtml(state)+'</p><h3>'+escapeHtml(x.title)+'</h3><p class="muted">'+meta+'</p>'+cost+err+'</div></article>';
+  }).join(""):'<p class="muted">No production records match this filter.</p>';
+}
 async function loadProductionAudit(){
   var box=$("auditHistory"),count=$("auditCount");if(!box)return;
   try{
     var r=await fetch(API_BASE+"/api/autopilot/audit?ts="+Date.now(),{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error||"Audit unavailable");
-    var items=d.items||[];if(count)count.textContent=items.length+" records";
-    box.innerHTML=items.length?items.map(function(x){
-      var when=x.completedAt||x.updatedAt||x.createdAt,mins=x.durationSeconds?Math.round(x.durationSeconds/6)/10:null;
-      var state=x.youtubeVerified?"YouTube Verified ✓":(x.status||x.stage||"In progress");
-      var meta=(when?escapeHtml(new Date(when).toLocaleString()):"Time unavailable")+(mins!=null?" • "+mins+" min":"")+(x.voiceProvider?" • TTS "+escapeHtml(x.voiceProvider):"")+" • "+Number(x.visuals||0)+" visuals • "+Number(x.videos||0)+" videos"+(x.recovered?" • Recovered ✓":"");
-      var cost=x.costEstimate!=null?'<small class="muted">TTS usage est. $'+Number(x.costEstimate).toFixed(6)+'</small>':"";
-      var err=x.error?'<p class="project-attention">Error: '+escapeHtml(String(x.error))+'</p>':"";
-      return '<article class="card project-history"><div><p class="eyebrow">'+escapeHtml(state)+'</p><h3>'+escapeHtml(x.title)+'</h3><p class="muted">'+meta+'</p>'+cost+err+'</div></article>';
-    }).join(""):'<p class="muted">No autopilot production records yet.</p>';
+    productionAuditItems=d.items||[];renderProductionAudit();
+    var search=$("auditSearch"),filter=$("auditFilter");
+    if(search&&!search.dataset.bound){search.dataset.bound="1";search.addEventListener("input",renderProductionAudit)}
+    if(filter&&!filter.dataset.bound){filter.dataset.bound="1";filter.addEventListener("change",renderProductionAudit)}
   }catch(e){if(count)count.textContent="Unavailable";box.innerHTML='<p class="muted">Production audit could not load: '+escapeHtml(e.message)+'</p>'}
 }
 async function loadProjectHistory(){
