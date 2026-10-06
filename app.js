@@ -179,21 +179,24 @@ createBtn.onclick=async()=>{createBtn.disabled=true;$("queueCount").textContent=
 $("autopilot").onchange=e=>{localStorage.autopilot=e.target.checked?"1":"0";statusText.textContent=e.target.checked?"Autopilot enabled. Future runs can be scheduled automatically.":"Autopilot off. Manual approval mode active."};
 $("autopilot").checked=localStorage.autopilot==="1";$("saveSettings").onclick=()=>{["niche","audience","duration","shortsSetting","voice"].forEach(k=>localStorage[k]=$(k).value);$("savedText").textContent="Saved on this device ✓";setTimeout(()=>$("savedText").textContent="",1800)};["niche","audience","duration","shortsSetting","voice"].forEach(k=>{if(localStorage[k])$(k).value=localStorage[k]});
 drawStages();renderIdeas();if(selectedTitle!=="Untitled AI Video")$("scriptTitle").textContent=selectedTitle;
-function generatePrototypeIdeas(){
+async function generateAiIdeas(){
   var niche=$("ideaNiche").value.trim()||"AI & Technology";
   var audience=$("ideaAudience").value;
-  $("ideaStatus").textContent="Generating concepts…";
+  $("ideaStatus").textContent="Generating AI concepts…";
   $("generateIdeas").disabled=true;
-  setTimeout(function(){
-    ideas=ideaTemplates.slice().sort(function(){return Math.random()-.5}).slice(0,4).map(function(x){
-      return [x[0].split("{niche}").join(niche),x[1]+" • "+audience,x[2]];
-    });
+  try{
+    var r=await fetch(API_BASE+"/api/ai/ideas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({niche:niche,audience:audience})});
+    var data=await r.json();
+    if(!r.ok)throw new Error(data.message||data.details||data.error||"Idea generation failed");
+    ideas=(data.ideas||[]).map(function(x){return [x.title,x.angle,x.hook]});
     renderIdeas();
-    $("ideaStatus").textContent="4 ideas generated • prototype engine";
-    $("generateIdeas").disabled=false;
-  },650);
+    $("ideaStatus").textContent=ideas.length+" AI ideas generated • "+(data.provider||"AI");
+  }catch(e){
+    $("ideaStatus").textContent="AI ideas failed: "+e.message;
+  }
+  $("generateIdeas").disabled=false;
 }
-$("generateIdeas").onclick=generatePrototypeIdeas;
+$("generateIdeas").onclick=generateAiIdeas;
 if(localStorage.niche)$("ideaNiche").value=localStorage.niche;
 if(localStorage.audience)$("ideaAudience").value=localStorage.audience;
 
