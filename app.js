@@ -116,7 +116,7 @@ async function runFinalE2ETest(){
   if(!confirm("Run the FINAL production test? This will create and upload 1 Long + 3 Shorts to YouTube."))return;
   b.disabled=true;out.textContent="Starting final E2E test…";
   try{
-    var r=await fetch(API_BASE+"/api/autopilot/final-e2e",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"V6.7 Final Production Test"})}),d=await r.json();
+    var r=await fetch(API_BASE+"/api/autopilot/final-e2e",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"V7.1 Quality Final Production Test"})}),d=await r.json();
     if(!r.ok)throw new Error(d.message||d.error||"Final E2E could not start");
     out.textContent="Final E2E queued ✓ Autopilot will claim it on the next tick.";
     b.textContent="Final E2E Started ✓";
