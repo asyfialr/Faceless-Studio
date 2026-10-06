@@ -72,19 +72,19 @@ async function refreshAutopilotMonitor(){
     var qo=$("monitorQuality");if(qo){if(quality){var qc=quality.checks||{},qbad=Object.keys(qc).filter(function(k){return !qc[k]});qo.textContent=quality.passed?"Quality: PASS ✓ • "+(quality.project?.title||"Latest production"):(qbad.length?"Quality needs attention: "+qbad.join(", "):"Quality validator: review required");}else qo.textContent="Quality validator: temporarily unavailable";}
     var dio=$("monitorDiagnostics");if(dio){if(diagnostics){var df=diagnostics.latestFailure;if(diagnostics.healthy||!df)dio.textContent="Diagnostics: no failures ✓";else dio.textContent="Failure: "+(df.stage||df.status||"unknown")+" • "+(df.error||"Unknown error")+" • Action: "+(df.suggestedAction||"Review logs and retry.");}else dio.textContent="Diagnostics: temporarily unavailable";}
     if(monitor){var s=monitor.storage||{},gb=function(n){return Number.isFinite(Number(n))?(Number(n)/1073741824).toFixed(2)+" GB":"—"};$("monitorStorage").textContent=s.usedPercent!=null?s.usedPercent+"%":"—";$("monitorStorage").title=s.totalBytes?gb(s.usedBytes)+" / "+gb(s.totalBytes):"";$("monitorTts").textContent=monitor.tts?.provider||"unknown";$("monitorCost").textContent=monitor.tts?.usageEquivalentUsd!=null?"$"+Number(monitor.tts.usageEquivalentUsd).toFixed(6):"—";var r=monitor.recovery;$("monitorRecovery").textContent=r?("Last storage recovery: "+(r.title||r.jobId)+" • "+new Date(r.at).toLocaleString()+(r.version?" • "+r.version:"")):"Storage recovery: none recorded";}
-    try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"});if(er.ok){var ed=await er.json(),eo=$("monitorEngine");if(eo)eo.textContent="Autopilot engine: "+(ed.enabled?"RUNNING ✓":"PAUSED")+" • "+(ed.config?.time||"19:00")+" "+(ed.config?.timeZone||"America/New_York");var ep=$("monitorPause"),ers=$("monitorResume");if(ep)ep.disabled=!ed.enabled;if(ers)ers.disabled=!!ed.enabled}}catch(_){}
+    try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"});if(er.ok){var ed=await er.json(),eo=$("monitorEngine");if(eo)eo.textContent="Autopilot engine: "+(ed.enabled?"RUNNING ✓":"PAUSED")+" • "+(ed.config?.time||"19:00")+" "+(ed.config?.timeZone||"America/New_York");var et=$("monitorEngineToggle");if(et){et.disabled=false;et.dataset.action=ed.enabled?"pause":"resume";et.textContent=ed.enabled?"Pause Autopilot":"Resume Autopilot"}}}catch(_){}
   }catch(e){badge.textContent="RETRYING";$("monitorLatest").textContent="Backend is waking up or connection changed. Retrying automatically…";$("monitorChecks").textContent="Last dashboard values are kept until the backend responds."}
 }
 async function refreshAutopilotEngine(){
-  var out=$("monitorEngine");if(!out)return;
-  try{var r=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);out.textContent="Autopilot engine: "+(d.enabled?"RUNNING ✓":"PAUSED")+" • "+(d.config?.time||"19:00")+" "+(d.config?.timeZone||"America/New_York");$("monitorPause").disabled=!d.enabled;$("monitorResume").disabled=!!d.enabled}catch(e){out.textContent="Autopilot engine: status unavailable"}
+  var out=$("monitorEngine"),t=$("monitorEngineToggle");if(!out)return;
+  try{var r=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);out.textContent="Autopilot engine: "+(d.enabled?"RUNNING ✓":"PAUSED")+" • "+(d.config?.time||"19:00")+" "+(d.config?.timeZone||"America/New_York");if(t){t.disabled=false;t.dataset.action=d.enabled?"pause":"resume";t.textContent=d.enabled?"Pause Autopilot":"Resume Autopilot"}}catch(e){out.textContent="Autopilot engine: status unavailable";if(t){t.disabled=true;t.textContent="Autopilot unavailable"}}
 }
 async function setAutopilotEngine(action){
-  var p=$("monitorPause"),r=$("monitorResume");p.disabled=true;r.disabled=true;
-  try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e)}
+  var t=$("monitorEngineToggle");if(t){t.disabled=true;t.textContent=action==="pause"?"Pausing…":"Resuming…"}
+  try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e);await refreshAutopilotEngine()}
 }
 function bindAutopilotEngineControls(){
-  var p=$("monitorPause"),r=$("monitorResume");if(p)p.onclick=function(){setAutopilotEngine("pause")};if(r)r.onclick=function(){setAutopilotEngine("resume")};
+  var t=$("monitorEngineToggle");if(t)t.onclick=function(){var action=t.dataset.action;if(action==="pause"||action==="resume")setAutopilotEngine(action)};
   refreshAutopilotEngine();
 }
 bindAutopilotEngineControls();
