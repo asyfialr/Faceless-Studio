@@ -111,6 +111,19 @@ async function queueTopicAction(id,action){
   try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){var out=$("queueControlCount");if(out)out.textContent="Queue action failed: "+(e.message||e)}
 }
 refreshQueueControl();setInterval(refreshQueueControl,10000);
+async function runFinalE2ETest(){
+  var b=$("runFinalE2E"),out=$("finalE2EStatus");if(!b||!out)return;
+  if(!confirm("Run the FINAL production test? This will create and upload 1 Long + 3 Shorts to YouTube."))return;
+  b.disabled=true;out.textContent="Starting final E2E test…";
+  try{
+    var r=await fetch(API_BASE+"/api/autopilot/final-e2e",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"V6.7 Final Production Test"})}),d=await r.json();
+    if(!r.ok)throw new Error(d.message||d.error||"Final E2E could not start");
+    out.textContent="Final E2E queued ✓ Autopilot will claim it on the next tick.";
+    b.textContent="Final E2E Started ✓";
+    await refreshQueueControl();await refreshAutopilotMonitor();
+  }catch(e){out.textContent="Could not start: "+(e.message||e);b.disabled=false;b.textContent="Run Final E2E Test"}
+}
+var finalE2EButton=$("runFinalE2E");if(finalE2EButton)finalE2EButton.onclick=runFinalE2ETest;
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 if(location.hash==="#projectsPage")setTimeout(function(){loadProjectHistory();loadProductionAudit()},0);
