@@ -62,11 +62,11 @@ async function refreshAutopilotMonitor(){
     if(settled[0].status==="fulfilled"&&settled[0].value.ok)health=await settled[0].value.json();
     if(settled[1].status==="fulfilled"&&settled[1].value.ok)v=await settled[1].value.json();
     var monitor=null;if(settled[2].status==="fulfilled"&&settled[2].value.ok)monitor=await settled[2].value.json();var quality=null;if(settled[3].status==="fulfilled"&&settled[3].value.ok)quality=await settled[3].value.json();
-    if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
+    if(!health&&!v&&!monitor&&!quality)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
     $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueControlCount=$("queueControlCount");if(queueControlCount&&counts.queued!=null)queueControlCount.textContent="Queue: "+Number(counts.queued)+" pending";
-    badge.textContent=v?.passed?"V7.1 STABLE ✓":(health?.healthy?"ONLINE":"ATTENTION");
-    var latest=v?.latestCompleted||health?.latestJob;
+    badge.textContent=v?.passed?"V7.1 STABLE ✓":(quality?.passed?"QUALITY PASS ✓":(health?.healthy?"ONLINE":"ATTENTION"));
+    var latest=v?.latestCompleted||health?.latestJob||(quality?.project?{title:quality.project.title,status:quality.project.status}:null);
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
     var checks=v?.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=v?(bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓"):"Health online • validation will retry automatically.";
     var qo=$("monitorQuality");if(qo){if(quality){var qc=quality.checks||{},qbad=Object.keys(qc).filter(function(k){return !qc[k]});qo.textContent=quality.passed?"Quality: PASS ✓ • "+(quality.project?.title||"Latest production"):(qbad.length?"Quality needs attention: "+qbad.join(", "):"Quality validator: review required");}else qo.textContent="Quality validator: temporarily unavailable";}
