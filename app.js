@@ -143,7 +143,8 @@ function renderProductionAudit(){
     var meta=(when?escapeHtml(new Date(when).toLocaleString()):"Time unavailable")+(mins!=null?" • "+mins+" min":"")+(x.voiceProvider?" • TTS "+escapeHtml(x.voiceProvider):"")+" • "+Number(x.visuals||0)+" visuals • "+Number(x.videos||0)+" videos"+(x.recovered?" • Recovered ✓":"");
     var cost=x.costEstimate!=null?'<small class="muted">TTS usage est. $'+Number(x.costEstimate).toFixed(6)+'</small>':"";
     var err=x.error?'<p class="project-attention">Error: '+escapeHtml(String(x.error))+'</p>':"";
-    return '<article class="card project-history"><div><p class="eyebrow">'+escapeHtml(state)+'</p><h3>'+escapeHtml(x.title)+'</h3><p class="muted">'+meta+'</p>'+cost+err+'</div></article>';
+    var yt=x.youtube||{},links=[];if(yt.longUrl)links.push('<a class="secondary link-btn" target="_blank" rel="noopener" href="'+escapeHtml(yt.longUrl)+'">Watch Long ↗</a>');(yt.shorts||[]).forEach(function(s,i){if(s.url)links.push('<a class="secondary link-btn" target="_blank" rel="noopener" href="'+escapeHtml(s.url)+'">Short '+(i+1)+' ↗</a>')});var youtubeLinks=links.length?'<div class="script-actions" style="margin-top:10px">'+links.join("")+'</div>':"";
+    return '<article class="card project-history"><div><p class="eyebrow">'+escapeHtml(state)+'</p><h3>'+escapeHtml(x.title)+'</h3><p class="muted">'+meta+'</p>'+cost+youtubeLinks+err+'</div></article>';
   }).join(""):'<p class="muted">No production records match this filter.</p>';
 }
 async function loadProductionAudit(){
