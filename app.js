@@ -64,7 +64,7 @@ async function refreshAutopilotMonitor(){
     var monitor=null;if(settled[2].status==="fulfilled"&&settled[2].value.ok)monitor=await settled[2].value.json();
     if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
-    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";
+    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueCount=$("queueCount");if(queueCount&&counts.queued!=null)queueCount.textContent="Queue: "+Number(counts.queued)+" pending";
     badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
     var latest=v?.latestCompleted||health?.latestJob;
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
