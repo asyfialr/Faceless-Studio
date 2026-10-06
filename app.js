@@ -80,9 +80,12 @@ async function setAutopilotEngine(action){
   var p=$("monitorPause"),r=$("monitorResume");p.disabled=true;r.disabled=true;
   try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e)}
 }
-if($("monitorPause"))$("monitorPause").onclick=function(){setAutopilotEngine("pause")};
-if($("monitorResume"))$("monitorResume").onclick=function(){setAutopilotEngine("resume")};
-refreshAutopilotEngine();setInterval(refreshAutopilotEngine,30000);
+function bindAutopilotEngineControls(){
+  var p=$("monitorPause"),r=$("monitorResume");if(p)p.onclick=function(){setAutopilotEngine("pause")};if(r)r.onclick=function(){setAutopilotEngine("resume")};
+  refreshAutopilotEngine();
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAutopilotEngineControls,{once:true});else bindAutopilotEngineControls();
+setInterval(refreshAutopilotEngine,30000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 async function loadProjectHistory(){
