@@ -64,7 +64,7 @@ async function refreshAutopilotMonitor(){
     var monitor=null;if(settled[2].status==="fulfilled"&&settled[2].value.ok)monitor=await settled[2].value.json();
     if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
-    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueCount=$("queueCount");if(queueCount&&counts.queued!=null){queueCount.textContent="Queue: "+Number(counts.queued)+" pending";queueCount.dataset.monitorCount=String(Number(counts.queued));}
+    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueControlCount=$("queueControlCount");if(queueControlCount&&counts.queued!=null)queueControlCount.textContent="Queue: "+Number(counts.queued)+" pending";
     badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
     var latest=v?.latestCompleted||health?.latestJob;
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
@@ -89,7 +89,7 @@ bindAutopilotEngineControls();
 setTimeout(refreshAutopilotEngine,1500);
 setInterval(refreshAutopilotEngine,30000);
 async function refreshQueueControl(){
-  var next=$("queueNext"),count=$("queueCount");if(!next)return;
+  var next=$("queueNext"),count=$("queueControlCount");if(!next)return;
   try{
     var r=await fetch(API_BASE+"/api/autopilot/queue/control?ts="+Date.now(),{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);
     next.textContent=d.next?"Next topic: "+d.next.title:"Next topic: queue empty ✓";
@@ -100,7 +100,7 @@ async function refreshQueueControl(){
 async function queueAction(action){
   var id=$("queueNext")?.dataset.topicId;if(!id)return;
   $("queuePrioritize").disabled=true;$("queueSkip").disabled=true;
-  try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){$("queueCount").textContent="Queue action failed: "+(e.message||e)}
+  try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){$("queueControlCount").textContent="Queue action failed: "+(e.message||e)}
 }
 if($("queuePrioritize"))$("queuePrioritize").onclick=function(){queueAction("prioritize")};
 if($("queueSkip"))$("queueSkip").onclick=function(){queueAction("skip")};
