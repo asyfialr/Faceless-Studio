@@ -192,7 +192,7 @@ async function generateAiIdeas(){
     renderIdeas();
     $("ideaStatus").textContent=ideas.length+" AI ideas generated • "+(data.provider||"AI");
   }catch(e){
-    $("ideaStatus").textContent="AI ideas failed: "+e.message;
+    $("ideaStatus").textContent="AI unavailable • check Gemini quota / API key";
   }
   $("generateIdeas").disabled=false;
 }
