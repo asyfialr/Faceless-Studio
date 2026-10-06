@@ -685,6 +685,23 @@ app.get("/api/autopilot/safety",async(req,res)=>{try{
   const checks={singleActiveJob:active.length<=1,noDuplicateSlots:duplicateSlots.length===0,noDuplicateActiveProjects:duplicateActiveProjects.length===0,assignedTopicsBound:assigned.every(t=>jobs.some(j=>j.id===t.assignedJobId)),pauseBlocksNewClaims:config.enabled===true||active.length===0,storageHealthy:storage?.usedPercent==null||storage.usedPercent<90,lastTickHealthy:autopilotLastTickOk!==false};
   res.json({passed:Object.values(checks).every(Boolean),checks,counts:{active:active.length,queued:queued.length,assigned:assigned.length},duplicates:{slots:duplicateSlots,activeProjects:duplicateActiveProjects},storage,engineEnabled:config.enabled===true,lastTickAt:autopilotLastTickAt,lastTickError:autopilotLastTickError,checkedAt:new Date().toISOString()});
 }catch(e){res.status(500).json({error:"autopilot_safety_failed",message:e.message})}});
+app.get("/api/autopilot/quality",async(req,res)=>{try{
+  const store=await cleanupAutopilotPlaceholders(await readAutopilotJobs()),jobs=(store.jobs||[]).filter(j=>j.projectId),latest=jobs.slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
+  if(!latest)return res.json({passed:true,version:"V7.1.4",message:"No production project available to inspect.",checks:{},checkedAt:new Date().toISOString()});
+  let meta={};try{meta=JSON.parse(await readFile(join(storageRoot,latest.projectId,"project.json"),"utf8"))}catch{}
+  const narration=String(meta.narration||""),words=narration.trim()?narration.trim().split(/\s+/).length:0,scenes=Array.isArray(meta.visualPlan)?meta.visualPlan:[],md=meta.metadata||{},longTitle=String(md.longTitle||""),shortTitles=Array.isArray(md.shortsTitles)?md.shortsTitles:[],selection=meta.shortsSelection||{},starts=Array.isArray(selection.starts)?selection.starts:[],angles=Array.isArray(meta.script?.shortsAngles)?meta.script.shortsAngles:[];
+  const checks={
+    narrationPresent:words>=100,
+    visualPlanHealthy:scenes.length>=6&&scenes.length<=10&&scenes.every(s=>String(s.visualPrompt||"").trim().length>=20),
+    longTitleHealthy:longTitle.length>=20&&longTitle.length<=90,
+    shortsTitlesHealthy:shortTitles.length===3&&new Set(shortTitles.map(x=>String(x).trim().toLowerCase())).size===3,
+    shortsDistributed:starts.length===3&&starts[0]<starts[1]&&starts[1]<starts[2],
+    shortsAnglesReady:angles.length===3,
+    thumbnailReady:meta.thumbnailReady===true||Boolean(meta.thumbnailUrl),
+    captionsReady:meta.captionsReady===true
+  };
+  res.json({passed:Object.values(checks).every(Boolean),version:"V7.1.4",project:{id:latest.projectId,title:latest.title,status:latest.status,stage:latest.stage},checks,metrics:{narrationWords:words,visualScenes:scenes.length,longTitleChars:longTitle.length,shortTitleCount:shortTitles.length,shortStarts:starts,shortDuration:selection.duration??null,shortAngles:angles.length},checkedAt:new Date().toISOString()});
+}catch(e){res.status(500).json({error:"autopilot_quality_failed",message:e.message})}});
 app.get("/api/autopilot/stats",async(req,res)=>{try{const store=await cleanupAutopilotPlaceholders(await readAutopilotJobs()),jobs=store.jobs||[],done=jobs.filter(j=>j.stage==="complete"||j.status==="youtube-complete"),active=jobs.filter(j=>!(j.stage==="complete"||j.status==="youtube-complete")&&(j.title||j.topicId||j.projectId)),cloudflare=done.filter(j=>(j.voiceProvider||j.productionMetrics?.voiceProvider)==="cloudflare"),usage=done.reduce((sum,j)=>sum+Number(j.costEstimate?.ttsUsageEquivalentUsd||0),0),duration=done.reduce((sum,j)=>sum+Number(j.longDuration||j.productionMetrics?.durationSeconds||0),0),visuals=done.reduce((sum,j)=>sum+Number(j.visualCount||j.productionMetrics?.visualCount||0),0);res.json({completedJobs:done.length,activeJobs:active.length,totalVideos:done.reduce((sum,j)=>sum+Number(j.youtubeVideoCount||j.productionMetrics?.outputVideos||0),0),totalDurationSeconds:Number(duration.toFixed(1)),totalVisuals:visuals,cloudflareTtsJobs:cloudflare.length,ttsUsageEquivalentUsd:Number(usage.toFixed(6)),actualBilledUsd:null,freeTierMayCover:cloudflare.length>0,averageDurationSeconds:done.length?Number((duration/done.length).toFixed(1)):0,averageVisuals:done.length?Number((visuals/done.length).toFixed(1)):0,averageVideos:done.length?Number((done.reduce((sum,j)=>sum+Number(j.youtubeVideoCount||j.productionMetrics?.outputVideos||0),0)/done.length).toFixed(1)):0,lastCompletedAt:done.slice().sort((a,b)=>String(b.completedAt||b.updatedAt||"").localeCompare(String(a.completedAt||a.updatedAt||"")))[0]?.completedAt||null})}catch(e){res.status(500).json({error:"autopilot_stats_failed",message:e.message})}});
 app.post("/api/autopilot/run-next",async(req,res)=>{
   try{
