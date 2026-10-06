@@ -957,7 +957,7 @@ async function automaticAutopilotTick(){
     if(result.recorded){console.log("[autopilot] automatic dry-run trigger recorded",result.recorded.slot);await createAutopilotProductionJob(result)}
     await recoverRetryableAutopilotFailures();
     await cleanupCompletedAutopilotMedia();
-    await claimNextQueuedTopicAutomatically();
+    if(result.enabled===true)await claimNextQueuedTopicAutomatically();
     await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
     const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
     autopilotLastTickAt=new Date().toISOString();autopilotLastTickOk=true;autopilotLastTickError=null;
