@@ -88,6 +88,18 @@ function bindAutopilotEngineControls(){
 bindAutopilotEngineControls();
 setTimeout(refreshAutopilotEngine,1500);
 setInterval(refreshAutopilotEngine,30000);
+async function refreshQueueControl(){
+  var next=$("queueNext"),count=$("queueCount");if(!next)return;
+  try{var r=await fetch(API_BASE+"/api/autopilot/queue/control",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);next.textContent=d.next?"Next topic: "+d.next.title:"Next topic: queue empty ✓";count.textContent="Queue: "+Number(d.queued||0)+" pending";next.dataset.topicId=d.next?.id||"";$("queuePrioritize").disabled=!d.next;$("queueSkip").disabled=!d.next}catch(e){next.textContent="Next topic: unavailable";count.textContent="Queue control will retry automatically."}
+}
+async function queueAction(action){
+  var id=$("queueNext")?.dataset.topicId;if(!id)return;
+  $("queuePrioritize").disabled=true;$("queueSkip").disabled=true;
+  try{var r=await fetch(API_BASE+"/api/autopilot/queue/"+encodeURIComponent(id)+"/"+action,{method:"POST"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);await refreshQueueControl();await refreshAutopilotMonitor()}catch(e){$("queueCount").textContent="Queue action failed: "+(e.message||e)}
+}
+if($("queuePrioritize"))$("queuePrioritize").onclick=function(){queueAction("prioritize")};
+if($("queueSkip"))$("queueSkip").onclick=function(){queueAction("skip")};
+refreshQueueControl();setInterval(refreshQueueControl,10000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
 async function loadProjectHistory(){
