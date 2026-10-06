@@ -113,6 +113,7 @@ async function queueTopicAction(id,action){
 refreshQueueControl();setInterval(refreshQueueControl,10000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
+if(location.hash==="#projectsPage")setTimeout(function(){loadProjectHistory();loadProductionAudit()},0);
 async function loadProductionAudit(){
   var box=$("auditHistory"),count=$("auditCount");if(!box)return;
   try{
