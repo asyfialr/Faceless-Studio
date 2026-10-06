@@ -60,10 +60,11 @@ app.post("/api/ai/ideas",async(req,res)=>{
       lastError=data?.error?.message||"Gemini request failed";
     }
     if(!openaiKey)return res.status(502).json({error:"gemini_error",details:lastError});
+    if(/credit|billing|quota|insufficient_quota/i.test(String(lastError||"")))console.warn("[ideas] Gemini unavailable; trying OpenAI fallback");
   }catch(e){if(!openaiKey)return res.status(500).json({error:"idea_generation_failed",message:e.message})}
   try{
     const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-5-mini",input:prompt,text:{format:{type:"json_object"}}})}),data=await r.json();
-    if(!r.ok)return res.status(502).json({error:"ai_provider_error",details:data?.error?.message||"OpenAI request failed"});
+    if(!r.ok){const detail=data?.error?.message||"OpenAI request failed";return res.status(502).json({error:/credit|billing|quota|insufficient_quota/i.test(detail)?"ai_credits_unavailable":"ai_provider_error",details:/credit|billing|quota|insufficient_quota/i.test(detail)?"AI provider credits are unavailable. Add credits or configure Gemini, then try again.":detail});}
     const raw=data.output_text||data.output?.flatMap(x=>x.content||[]).map(x=>x.text||"").join("")||"";
     return res.json(await normalize(raw,"openai",process.env.OPENAI_MODEL||"gpt-5-mini"));
   }catch(e){return res.status(500).json({error:"idea_generation_failed",message:e.message})}
