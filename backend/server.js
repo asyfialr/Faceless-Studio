@@ -51,7 +51,7 @@ app.post("/api/ai/ideas",async(req,res)=>{
     return {ok:true,provider,model:model||null,ideas};
   }
   if(geminiKey)try{
-    const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);
+    const models=[process.env.GEMINI_IDEA_MODEL||"gemini-2.5-flash-lite",process.env.GEMINI_MODEL,"gemini-2.5-flash"].filter((v,i,a)=>v&&a.indexOf(v)===i);
     let lastError=null;
     for(const model of models){
       const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})});
@@ -59,7 +59,7 @@ app.post("/api/ai/ideas",async(req,res)=>{
       if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";return res.json(await normalize(raw,"gemini",model))}
       lastError=data?.error?.message||"Gemini request failed";
     }
-    if(!openaiKey)return res.status(502).json({error:"gemini_error",details:lastError});
+    if(!openaiKey)return res.status(502).json({error:"gemini_error",details:"Gemini Idea Generator is temporarily unavailable. Check GEMINI_API_KEY / Gemini quota and try again."});
     if(/credit|billing|quota|insufficient_quota/i.test(String(lastError||"")))console.warn("[ideas] Gemini unavailable; trying OpenAI fallback");
   }catch(e){if(!openaiKey)return res.status(500).json({error:"idea_generation_failed",message:e.message})}
   try{
