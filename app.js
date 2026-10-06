@@ -64,7 +64,7 @@ async function refreshAutopilotMonitor(){
     var monitor=null;if(settled[2].status==="fulfilled"&&settled[2].value.ok)monitor=await settled[2].value.json();
     if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
-    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueCount=$("queueCount");if(queueCount&&counts.queued!=null)queueCount.textContent="Queue: "+Number(counts.queued)+" pending";
+    $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueCount=$("queueCount");if(queueCount&&counts.queued!=null){queueCount.textContent="Queue: "+Number(counts.queued)+" pending";queueCount.dataset.monitorCount=String(Number(counts.queued));}
     badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
     var latest=v?.latestCompleted||health?.latestJob;
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
@@ -94,7 +94,7 @@ async function refreshQueueControl(){
     var r=await fetch(API_BASE+"/api/autopilot/queue/control?ts="+Date.now(),{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);
     var queueTotal=Array.isArray(d.topics)?d.topics.length:Number(d.queued||0);
     next.textContent=d.next?"Next topic: "+d.next.title:"Next topic: queue empty ✓";
-    count.textContent="Queue: "+queueTotal+" pending";
+    if(count.dataset.monitorCount==null)count.textContent="Queue: "+queueTotal+" pending";
     next.dataset.topicId=d.next?.id||"";
     $("queuePrioritize").disabled=!d.next;$("queueSkip").disabled=!d.next;
   }catch(e){next.textContent="Next topic: unavailable";count.textContent="Queue control will retry automatically."}
