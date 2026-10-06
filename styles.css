@@ -47,3 +47,16 @@
 .output-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin:8px 0 12px;border:1px solid #252c39;border-radius:16px;overflow:hidden;background:#252c39}.output-strip span{background:#121720;padding:10px 8px;text-align:center;color:#9da6ba;font-size:11px;white-space:nowrap}.output-strip strong{color:#f3f5f9;font-size:16px;margin-right:3px}@media(max-width:380px){.output-strip span{padding:8px 4px;font-size:10px}.output-strip strong{font-size:14px}}
 .monitor-resource-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}.monitor-resource-strip span{min-width:0;color:#9da6ba;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monitor-resource-strip strong{display:block;color:#f3f5f9;font-size:16px;line-height:1.2;overflow:hidden;text-overflow:ellipsis}.monitor-recovery{margin-top:8px}.monitor-recovery summary{cursor:pointer;color:#8992a5;font-size:10px;list-style:none}.monitor-recovery summary::-webkit-details-marker{display:none}.monitor-recovery summary:after{content:" +";}.monitor-recovery[open] summary:after{content:" −"}.monitor-recovery small{display:block;margin-top:5px;font-size:10px}
 .system-status{margin-top:10px;border:1px solid #252c39;border-radius:14px;padding:10px 12px}.system-status summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none}.system-status summary::-webkit-details-marker{display:none}.system-status summary span{color:#8992a5;font-size:10px;text-transform:uppercase;letter-spacing:.08em}.system-status summary strong{font-size:12px}.system-status-body{display:grid;gap:5px;margin-top:10px}.system-status-body small{display:block;font-size:10px;line-height:1.35}
+
+/* V7.2.15 dashboard final polish */
+#dashboard{gap:10px}
+#dashboard>.card{margin-bottom:0}
+#autopilotMonitor{padding:16px}
+#autopilotMonitor .section-head h3{margin:3px 0 0}
+#autopilotMonitor .eyebrow{margin-bottom:0}
+#autopilotMonitor .production-health-stats{margin:9px 0 10px}
+#autopilotMonitor #monitorLatest{margin:6px 0 0;font-size:11px;line-height:1.35}
+#autopilotMonitor #monitorEngine{display:block;margin-top:6px;font-size:10px}
+#autopilotMonitor #monitorEngineToggle{padding:10px 13px;font-size:12px;border-radius:12px}
+#dashboard .pipeline-details summary,#dashboard .monitor-tools summary{min-height:28px;display:flex;align-items:center}
+@media(max-width:480px){#dashboard{gap:8px}#autopilotMonitor{padding:14px}.topbar{margin-bottom:10px}.production-health-stats{margin-bottom:8px}.system-status{margin-top:8px}.monitor-resource-strip{margin-top:8px}}
