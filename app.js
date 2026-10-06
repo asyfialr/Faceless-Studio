@@ -84,7 +84,8 @@ function bindAutopilotEngineControls(){
   var p=$("monitorPause"),r=$("monitorResume");if(p)p.onclick=function(){setAutopilotEngine("pause")};if(r)r.onclick=function(){setAutopilotEngine("resume")};
   refreshAutopilotEngine();
 }
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bindAutopilotEngineControls,{once:true});else bindAutopilotEngineControls();
+bindAutopilotEngineControls();
+setTimeout(refreshAutopilotEngine,1500);
 setInterval(refreshAutopilotEngine,30000);
 refreshAutopilotMonitor();setInterval(refreshAutopilotMonitor,10000);
 window.addEventListener("hashchange",syncHash);
