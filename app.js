@@ -65,7 +65,7 @@ async function refreshAutopilotMonitor(){
     if(!health&&!v&&!monitor)throw new Error("Backend temporarily unavailable");
     var counts=v?.counts||{};
     $("monitorCompleted").textContent=counts.completed??"—";$("monitorActive").textContent=counts.active??health?.activeJobs??"—";$("monitorFailed").textContent=counts.failed??"—";$("monitorQueued").textContent=counts.queued??"—";var queueControlCount=$("queueControlCount");if(queueControlCount&&counts.queued!=null)queueControlCount.textContent="Queue: "+Number(counts.queued)+" pending";
-    badge.textContent=v?.passed?"V6.0 READY ✓":(health?.healthy?"ONLINE":"ATTENTION");
+    badge.textContent=v?.passed?"V7.1 STABLE ✓":(health?.healthy?"ONLINE":"ATTENTION");
     var latest=v?.latestCompleted||health?.latestJob;
     $("monitorLatest").textContent=latest?("Latest: "+(latest.title||latest.id)+(latest.completedAt?" • completed "+new Date(latest.completedAt).toLocaleString():" • "+(latest.status||""))):"Backend online • waiting for production summary.";
     var checks=v?.checks||{},bad=Object.keys(checks).filter(function(k){return !checks[k]});$("monitorChecks").textContent=v?(bad.length?("Needs attention: "+bad.join(", ")):"All production checks passing ✓"):"Health online • validation will retry automatically.";
