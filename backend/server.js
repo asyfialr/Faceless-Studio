@@ -482,7 +482,7 @@ app.post("/api/ai/metadata",async(req,res)=>{
   try{
     const key=process.env.GEMINI_API_KEY,title=String(req.body?.title||"").trim(),narration=String(req.body?.narration||"").trim();
     if(!key)return res.status(503).json({error:"Gemini is not configured"});if(!title)return res.status(400).json({error:"title required"});
-    const prompt="Create YouTube metadata for a faceless video targeting a US/international English audience. Be compelling but accurate, not clickbait or misleading. Topic: "+title+"\nNarration context: "+narration.slice(0,6000)+"\nReturn ONLY valid JSON with: longTitle (max 90 chars), description (2 concise paragraphs plus natural CTA), hashtags (array of 3-5 strings without #), shortsTitles (array of exactly 3 distinct titles, each max 80 chars).";
+    const prompt="Create high-performing YouTube packaging for a faceless video targeting a US/international English audience. Topic: "+title+"\nNarration context: "+narration.slice(0,6000)+"\nThe Long title should create a clear curiosity gap or promise a specific useful insight while staying completely supported by the narration. Prefer natural spoken-English phrasing, strong concrete nouns/verbs, and front-load the most interesting idea. Avoid generic labels, ALL CAPS, excessive punctuation, fake urgency, sensational claims, and vague clickbait. Aim for roughly 45-70 characters when possible and never exceed 90. The 3 Shorts titles must each use a different angle/payoff and make sense standalone; do not simply number or paraphrase the Long title. The description should explain the value quickly in the first sentence, then give concise context and a natural CTA. Hashtags must be directly relevant. Return ONLY valid JSON with: longTitle (max 90 chars), description (2 concise paragraphs plus natural CTA), hashtags (array of 3-5 strings without #), shortsTitles (array of exactly 3 distinct titles, each max 80 chars).";
     const models=[process.env.GEMINI_MODEL||"gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((v,i,a)=>v&&a.indexOf(v)===i);let last="";
     for(const model of models){
       const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})});
@@ -502,8 +502,8 @@ app.post("/api/ai/thumbnail",async(req,res)=>{
     const projectDir=join(storageRoot,projectId);await mkdir(projectDir,{recursive:true});
     const metaPath=join(projectDir,"project.json");let meta={id:projectId};try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{}
     
-    const out=join(projectDir,"thumbnail.jpg"),stop=new Set(["THE","A","AN","TO","OF","FOR","AND","ARE","IS","USING","EVERY","PEOPLE"]);
-    const kw=title.split(/\s+/).map(v=>v.replace(/[^a-zA-Z0-9]/g,"")).filter(v=>v&&!stop.has(v.toUpperCase())).slice(0,4);
+    const out=join(projectDir,"thumbnail.jpg"),stop=new Set(["THE","A","AN","TO","OF","FOR","AND","ARE","IS","USING","EVERY","PEOPLE","THIS","THAT","WITH","FROM","YOUR","YOU","WHAT","WHY","HOW"]);
+    const kw=title.split(/\s+/).map(v=>v.replace(/[^a-zA-Z0-9]/g,"")).filter(v=>v&&!stop.has(v.toUpperCase())).slice(0,3);
     const headline=(kw.join(" ")||"NEW VIDEO").toUpperCase(),words=headline.split(/\s+/),lines=[];while(words.length&&lines.length<2)lines.push(words.splice(0,Math.min(3,words.length)).join(" "));
     const c=createCanvas(1280,720),x=c.getContext("2d"),g=x.createLinearGradient(0,0,1280,720);g.addColorStop(0,"#05080f");g.addColorStop(1,"#27314a");x.fillStyle=g;x.fillRect(0,0,1280,720);
     let visual=null;
