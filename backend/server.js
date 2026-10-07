@@ -745,6 +745,25 @@ app.get("/api/autopilot/quality",async(req,res)=>{try{
   res.json({passed:Object.values(checks).every(Boolean),version:"V7.1.4",project:{id:latest.projectId,title:latest.title,status:latest.status,stage:latest.stage},checks,metrics:{narrationWords:words,visualScenes:scenes.length,longTitleChars:longTitle.length,shortTitleCount:shortTitles.length,shortStarts:starts,shortDuration:selection.duration??null,shortAngles:angles.length},checkedAt:new Date().toISOString()});
 }catch(e){res.status(500).json({error:"autopilot_quality_failed",message:e.message})}});
 app.get("/api/autopilot/stats",async(req,res)=>{try{const store=await cleanupAutopilotPlaceholders(await readAutopilotJobs()),jobs=store.jobs||[],done=jobs.filter(j=>j.stage==="complete"||j.status==="youtube-complete"),active=jobs.filter(j=>!(j.stage==="complete"||j.status==="youtube-complete")&&(j.title||j.topicId||j.projectId)),cloudflare=done.filter(j=>(j.voiceProvider||j.productionMetrics?.voiceProvider)==="cloudflare"),usage=done.reduce((sum,j)=>sum+Number(j.costEstimate?.ttsUsageEquivalentUsd||0),0),duration=done.reduce((sum,j)=>sum+Number(j.longDuration||j.productionMetrics?.durationSeconds||0),0),visuals=done.reduce((sum,j)=>sum+Number(j.visualCount||j.productionMetrics?.visualCount||0),0);res.json({completedJobs:done.length,activeJobs:active.length,totalVideos:done.reduce((sum,j)=>sum+Number(j.youtubeVideoCount||j.productionMetrics?.outputVideos||0),0),totalDurationSeconds:Number(duration.toFixed(1)),totalVisuals:visuals,cloudflareTtsJobs:cloudflare.length,ttsUsageEquivalentUsd:Number(usage.toFixed(6)),actualBilledUsd:null,freeTierMayCover:cloudflare.length>0,averageDurationSeconds:done.length?Number((duration/done.length).toFixed(1)):0,averageVisuals:done.length?Number((visuals/done.length).toFixed(1)):0,averageVideos:done.length?Number((done.reduce((sum,j)=>sum+Number(j.youtubeVideoCount||j.productionMetrics?.outputVideos||0),0)/done.length).toFixed(1)):0,lastCompletedAt:done.slice().sort((a,b)=>String(b.completedAt||b.updatedAt||"").localeCompare(String(a.completedAt||a.updatedAt||"")))[0]?.completedAt||null})}catch(e){res.status(500).json({error:"autopilot_stats_failed",message:e.message})}});
+app.post("/api/autopilot/handoff",async(req,res)=>{
+  try{
+    const title=String(req.body?.title||"").trim().slice(0,160);
+    if(!title)return res.status(400).json({error:"title_required"});
+    const jobs=await cleanupAutopilotPlaceholders(await readAutopilotJobs());
+    const active=(jobs.jobs||[]).find(isAutopilotJobActive);
+    if(active)return res.status(409).json({error:"autopilot_busy",message:"A production job is already active.",job:{id:active.id,title:active.title,status:active.status,stage:active.stage}});
+    const topics=await readAutopilotTopics();
+    const topic={id:crypto.randomUUID(),title,status:"queued",createdAt:new Date().toISOString(),source:"script-handoff"};
+    topics.topics=[...(topics.topics||[]),topic].slice(-100);
+    await writeFile(autopilotTopicsPath,JSON.stringify(topics,null,2));
+    let config;try{config=JSON.parse(await readFile(autopilotConfigPath,"utf8"))}catch{config={enabled:false,days:[],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1}}
+    const now=new Date(),local=autopilotLocalParts(now,config.timeZone||"America/New_York"),slot="handoff-"+now.toISOString();
+    const job=await createAutopilotProductionJob({slot,config,local,recorded:{id:crypto.randomUUID(),slot,status:"script-handoff",source:"script-studio"}});
+    if(!job)throw new Error("Could not create production handoff job");
+    console.log("[autopilot] script handoff claimed",title,job.id);
+    res.json({ok:true,job:{id:job.id,title:job.title,status:job.status,stage:job.stage},topic:{id:topic.id,title:topic.title},message:"Script Studio project handed to the real autonomous production pipeline."});
+  }catch(e){res.status(500).json({error:"production_handoff_failed",message:e.message})}
+});
 app.post("/api/autopilot/run-next",async(req,res)=>{
   try{
     const jobs=await readAutopilotJobs(),active=(jobs.jobs||[]).find(j=>(j.title||j.topicId||j.projectId)&&!["complete","youtube-error","visual-plan-error","voice-error","script-error","production-finalize-error","captions-error"].includes(String(j.stage||""))&&!["youtube-complete","youtube-failed","visual-plan-failed","voice-failed","script-failed","metadata-thumbnail-failed","captions-failed"].includes(String(j.status||"")));
