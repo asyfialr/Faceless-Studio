@@ -304,11 +304,11 @@ app.post("/api/render/captions",async(req,res)=>{
       ctx.clearRect(0,0,w,rowH);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";const lh=Math.round(fs*1.18),top=rowH/2-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
       const img=join(captionScratch,`cap-${label}-${i}.png`),part=join(captionScratch,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
       const st=Math.max(0,bounds[i]),len=Math.max(.18,bounds[i+1]-bounds[i]);
-      await ff(["-y","-ss",st.toFixed(3),"-t",len.toFixed(3),"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-shortest",part],label+" segment "+(i+1));
+      await ff(["-y","-ss",st.toFixed(3),"-t",len.toFixed(3),"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-profile:v","baseline","-level","3.1","-pix_fmt","yuv420p","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-ar","44100","-ac","2","-shortest","-movflags","+faststart",part],label+" segment "+(i+1));
       await rm(img,{force:true}).catch(()=>{});parts.push(part);
     }
     const list=join(captionScratch,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
-    await ff(["-y","-fflags","+genpts","-f","concat","-safe","0","-i",list,"-c:v","libx264","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-af","aresample=async=1:first_pts=0","-movflags","+faststart",out],label+" concat");
+    await ff(["-y","-fflags","+genpts","-f","concat","-safe","0","-i",list,"-c:v","libx264","-profile:v","baseline","-level","3.1","-pix_fmt","yuv420p","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-ar","44100","-ac","2","-af","aresample=async=1:first_pts=0","-movflags","+faststart",out],label+" concat");
     await rm(list,{force:true}).catch(()=>{});await Promise.all(parts.map(p=>rm(p,{force:true}).catch(()=>{})));
   };
   try{
