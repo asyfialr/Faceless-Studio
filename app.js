@@ -342,8 +342,25 @@ async function syncAutopilotProductionUI(){
       setupReview();
     }else{
       if(done)done.hidden=true;
-      $("productionStatus").textContent="Autopilot production • "+(job.stage||job.status||"working")+"…";
-      setTimeout(syncAutopilotProductionUI,5000);
+      var failed=job.status==="captions-failed"&&job.stage==="captions-error";
+      $("productionStatus").textContent=failed?"Caption rendering failed. Recovery is available.":"Autopilot production • "+(job.stage||job.status||"working")+"…";
+      if(failed){
+        var result=$("productionResult");
+        result.innerHTML='<div class="result-card"><h3>Caption recovery</h3><p>The completed voice, visuals, long video and Shorts will be preserved.</p><div class="result-actions"><button id="retryCaptions" class="primary">Retry Captions</button></div></div>';
+        $("retryCaptions").onclick=async function(){
+          var b=this;b.disabled=true;b.textContent="Recovering…";
+          try{
+            var rr=await fetch(API_BASE+"/api/autopilot/jobs/"+encodeURIComponent(job.id)+"/retry-captions",{method:"POST"}),rd=await rr.json();
+            if(!rr.ok)throw new Error(rd.message||rd.error||("HTTP "+rr.status));
+            $("productionStatus").textContent="Caption recovery queued ✓";
+            result.innerHTML="";
+            setTimeout(syncAutopilotProductionUI,1200);
+          }catch(err){b.disabled=false;b.textContent="Retry Captions";$("productionStatus").textContent="Caption recovery failed • "+err.message}
+        };
+      }else{
+        if($("productionResult"))$("productionResult").innerHTML="";
+        setTimeout(syncAutopilotProductionUI,5000);
+      }
     }
   }catch(e){setTimeout(syncAutopilotProductionUI,8000)}
 }
