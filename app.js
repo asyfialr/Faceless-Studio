@@ -225,8 +225,10 @@ async function buildScriptDraft(){
       '<button id="sendProduction" class="primary">Send to Production</button>';
     $("sendProduction").onclick=function(){
       sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");
-      $("productionTitle").textContent=selectedTitle;$("productionStatus").textContent="AI script approved. Production is ready to start.";
+      $("productionTitle").textContent=selectedTitle;
+      $("productionStatus").textContent="AI script approved • starting production…";
       location.hash="productionStudio";
+      setTimeout(function(){runProduction()},350);
     };
     $("generateScript").textContent="Regenerate with AI";
   }catch(e){
