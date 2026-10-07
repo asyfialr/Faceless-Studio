@@ -36,11 +36,15 @@ function renderIdeas(){
   }).join("");
   document.querySelectorAll(".use-idea").forEach(function(link){
     link.addEventListener("click",function(){
-      selectedTitle=ideas[Number(link.getAttribute("data-i"))][0];
+      var idea=ideas[Number(link.getAttribute("data-i"))];
+      selectedTitle=idea[0];
       sessionStorage.setItem("selectedTitle",selectedTitle);
+      sessionStorage.setItem("selectedIdea",JSON.stringify({title:idea[0],angle:idea[1],hook:idea[2]}));
+      sessionStorage.removeItem("scriptReady");
       $("scriptTitle").textContent=selectedTitle;
-      $("scriptOutput").textContent="Idea selected. Generate a draft to continue.";
+      $("scriptOutput").textContent="Idea selected • preparing AI script…";
       $("scriptOutput").classList.add("empty");
+      setTimeout(function(){buildScriptDraft()},120);
     });
   });
 }
@@ -206,7 +210,7 @@ async function buildScriptDraft(){
   try{
     var r=await fetch(API_BASE+"/api/ai/script",{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({title:selectedTitle,audience:localStorage.audience||"US / International",duration:localStorage.duration||"8-10 minutes"})
+      body:JSON.stringify({title:selectedTitle,audience:localStorage.audience||"US / International",duration:localStorage.duration||"8-10 minutes",idea:(function(){try{return JSON.parse(sessionStorage.getItem("selectedIdea")||"null")}catch(e){return null}})()})
     });
     var data=await r.json();
     if(!r.ok)throw new Error(data.message||data.details||data.error||"AI request failed");
