@@ -965,7 +965,10 @@ async function cleanupAutopilotTempFiles(projectId){if(!projectId)return 0;const
 async function cleanupCompletedAutopilotMedia(excludeProjectId){
   const store=await readAutopilotJobs();let removed=0,bytes=0;
   const completed=(store.jobs||[]).filter(j=>j.status==="youtube-complete"&&j.stage==="complete"&&j.projectId&&j.projectId!==excludeProjectId).sort((a,b)=>String(a.completedAt||a.updatedAt||"").localeCompare(String(b.completedAt||b.updatedAt||"")));
-  for(const job of completed){const dir=join(storageRoot,job.projectId);let entries=[];try{entries=await readdir(dir,{withFileTypes:true})}catch{continue}
+  for(const job of completed){const dir=join(storageRoot,job.projectId);
+    let meta={};try{meta=JSON.parse(await readFile(join(dir,"project.json"),"utf8"))}catch{}
+    if(meta.reviewApproved!==true){console.log("[autopilot] preserve review media",job.projectId);continue}
+    let entries=[];try{entries=await readdir(dir,{withFileTypes:true})}catch{continue}
     for(const e of entries){if(!e.isFile())continue;const n=e.name;if(n==="project.json"||/thumbnail/i.test(n))continue;if(!/\.(mp4|wav|raw|png|jpg|jpeg|webp)$/i.test(n))continue;
       const p=join(dir,n);try{const s=await stat(p);await rm(p,{force:true});removed++;bytes+=Number(s.size||0)}catch{}}
     if(removed>=12||bytes>=500*1024*1024)break;
