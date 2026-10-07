@@ -263,7 +263,7 @@ async function runProduction(){
     await new Promise(function(r){setTimeout(r,520)});
   }
   drawProduction(-1,productionStages.length-1);
-  $("productionStatus").textContent="Production complete. Outputs are ready for review.";
+  $("productionStatus").textContent="Production complete • ready for review ✓";
   $("productionResult").innerHTML='<div class="result-card"><h3>Long Video</h3><p>16:9 • 8–10 min • Ready for review</p></div><div class="result-card"><h3>3 Shorts</h3><p>9:16 • Derived highlights • Ready for review</p><div class="result-actions"><button id="saveProject" class="primary">Save to Projects</button></div></div>';
   $("saveProject").textContent="Review Outputs";
   $("saveProject").onclick=function(){
