@@ -56,7 +56,7 @@ app.post("/api/ai/ideas",async(req,res)=>{
     for(const model of models){
       const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(geminiKey),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}})});
       const data=await r.json();
-      if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";console.log("[ideas] Gemini success",JSON.stringify({model,status:r.status}));return res.json(await normalize(raw,"gemini",model))}
+      if(r.ok){const raw=data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";try{const result=await normalize(raw,"gemini",model);console.log("[ideas] Gemini success",JSON.stringify({model,status:r.status,ideas:result.ideas.length}));return res.json(result)}catch(parseError){lastError="Gemini response format invalid: "+parseError.message;console.warn("[ideas] Gemini format failed",JSON.stringify({model,status:r.status,error:String(parseError.message).slice(0,300),rawPreview:String(raw).slice(0,300)}));continue}}
       lastError=data?.error?.message||"Gemini request failed";
       console.warn("[ideas] Gemini failed",JSON.stringify({model,status:r.status,error:String(lastError).slice(0,500)}));
     }
