@@ -600,7 +600,8 @@ app.get("/media/:projectId/:file",async(req,res,next)=>{
   if(!projectId||!/^[a-zA-Z0-9._-]+$/.test(file))return res.status(400).end();
   const path=join(storageRoot,projectId,file);let s;try{s=await stat(path);if(!s.isFile())return next()}catch{return next()}
   const ext=file.toLowerCase().split(".").pop(),types={mp4:"video/mp4",wav:"audio/wav",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
-  res.setHeader("Content-Type",types[ext]||"application/octet-stream");res.setHeader("Accept-Ranges","bytes");res.setHeader("Cache-Control","public, max-age=3600");
+  res.setHeader("Content-Type",types[ext]||"application/octet-stream");res.setHeader("Accept-Ranges","bytes");res.setHeader("Cache-Control","public, max-age=3600");res.setHeader("Access-Control-Allow-Origin",allowedOrigins.has(req.headers.origin)?req.headers.origin:allowedOrigin);res.setHeader("Vary","Origin");res.setHeader("Cross-Origin-Resource-Policy","cross-origin");
+  if(req.method==="HEAD"){res.setHeader("Content-Length",s.size);return res.status(200).end()}
   const range=req.headers.range;
   if(range&&ext==="mp4"){
     const m=/bytes=(\d*)-(\d*)/.exec(range);if(!m)return res.status(416).setHeader("Content-Range","bytes */"+s.size).end();
