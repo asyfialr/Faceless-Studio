@@ -389,8 +389,11 @@ async function hydrateRealReview(){
   var jobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
   if(!jobId)return;
   try{
-    var jr=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),jd=await jr.json(),jobs=jd.jobs||jd.items||[],job=jobs.find(function(x){return x.id===jobId});
+    var jr=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),jd=await jr.json(),jobs=jd.jobs||jd.items||[];
+    var completeJobs=jobs.filter(function(x){return x&&x.projectId&&(x.status==="complete"||x.stage==="complete"||x.status==="youtube-complete")}).sort(function(a,b){return new Date(b.updatedAt||b.completedAt||b.createdAt||0)-new Date(a.updatedAt||a.completedAt||a.createdAt||0)});
+    var savedJob=jobs.find(function(x){return x.id===jobId}),job=savedJob&&completeJobs.some(function(x){return x.id===savedJob.id})?savedJob:completeJobs[0];
     if(!job||!job.projectId)return;
+    if(job.id!==jobId){jobId=job.id;sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id)}
     var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(job.projectId)+"?ts="+Date.now(),{cache:"no-store"});if(!pr.ok)throw new Error("Project output not found");
     var meta=await pr.json(),shorts=Array.isArray(meta.shorts)?meta.shorts:[];
     reviewMedia=[{url:absoluteMediaUrl(meta.longVideoUrl)},{url:absoluteMediaUrl(shorts[0])},{url:absoluteMediaUrl(shorts[1])},{url:absoluteMediaUrl(shorts[2])}];
