@@ -300,10 +300,20 @@ async function runProduction(){
   $("startProduction").disabled=false;$("startProduction").textContent="Run Again";
 }
 $("startProduction").onclick=runProduction;
-drawProduction();
-if(sessionStorage.getItem("scriptReady")==="1"){
-  $("productionTitle").textContent=selectedTitle;
-  $("productionStatus").textContent="Script approved. Production is ready to start.";
+var persistedAutopilotJobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
+if(persistedAutopilotJobId){
+  var bootManual=$("manualProductionControls"),bootDone=$("autopilotProductionComplete");
+  if(bootManual)bootManual.hidden=true;if(bootDone)bootDone.hidden=true;
+  if($("productionSteps"))$("productionSteps").innerHTML="";
+  if($("productionResult"))$("productionResult").innerHTML="";
+  if($("productionTitle"))$("productionTitle").textContent=localStorage.getItem("facelessCurrentTitle")||selectedTitle||"Restoring project…";
+  if($("productionStatus"))$("productionStatus").textContent="Restoring production…";
+}else{
+  drawProduction();
+  if(sessionStorage.getItem("scriptReady")==="1"){
+    $("productionTitle").textContent=selectedTitle;
+    $("productionStatus").textContent="Script approved. Production is ready to start.";
+  }
 }
 
 async function syncAutopilotProductionUI(){
