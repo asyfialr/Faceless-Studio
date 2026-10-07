@@ -9,7 +9,8 @@ const ideaTemplates=[
 ["The Biggest {niche} Mistakes People May Be Making Right Now","List","High CTR"],
 ["What Happens Next With {niche}?","Future","Discussion"]
 ];
-let selectedTitle=sessionStorage.getItem("selectedTitle")||"Untitled AI Video", projectMade=false;
+let selectedTitle=localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||"Untitled AI Video", projectMade=false;
+if(selectedTitle!=="Untitled AI Video")sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);
 const $=id=>document.getElementById(id), pipeline=$("pipeline"), progressBar=$("progressBar"), progressLabel=$("progressLabel"), statusText=$("statusText"), createBtn=$("createBtn");
 function drawStages(active=-1){pipeline.innerHTML=stages.map((s,i)=>`<div class="step ${i<=active?"done":""}"><span class="dot"></span><span>${s}</span></div>`).join("")}
 function syncDashboardFromProject(d){
@@ -38,7 +39,7 @@ function renderIdeas(){
     link.addEventListener("click",function(){
       var idea=ideas[Number(link.getAttribute("data-i"))];
       selectedTitle=idea[0];
-      sessionStorage.setItem("selectedTitle",selectedTitle);
+      sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);
       sessionStorage.setItem("selectedIdea",JSON.stringify({title:idea[0],angle:idea[1],hook:idea[2]}));
       sessionStorage.removeItem("scriptReady");
       $("scriptTitle").textContent=selectedTitle;
@@ -228,7 +229,7 @@ async function buildScriptDraft(){
       try{
         var r=await fetch(API_BASE+"/api/autopilot/handoff",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle})});
         var data=await r.json();if(!r.ok)throw new Error(data.message||data.error||"Production handoff failed");
-        sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");sessionStorage.setItem("autopilotJobId",data.job?.id||"");
+        sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");sessionStorage.setItem("autopilotJobId",data.job?.id||"");localStorage.setItem("facelessAutopilotJobId",data.job?.id||"");
         $("productionTitle").textContent=selectedTitle;
         $("productionStatus").textContent="Real production started • "+(data.job?.stage||"script-ready");
         location.hash="productionStudio";
@@ -281,10 +282,10 @@ if(sessionStorage.getItem("scriptReady")==="1"){
 }
 
 async function syncAutopilotProductionUI(){
-  var jobId=sessionStorage.getItem("autopilotJobId")||"";
+  var jobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";if(jobId)sessionStorage.setItem("autopilotJobId",jobId);
   try{
     var r=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),d=await r.json();
-    var jobs=d.jobs||d.items||[],currentTitle=String(sessionStorage.getItem("selectedTitle")||$("productionTitle")?.textContent||"").trim();
+    var jobs=d.jobs||d.items||[],currentTitle=String(localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||$("productionTitle")?.textContent||"").trim();
     var job=jobs.find(function(x){return x.id===jobId});
     if(!job&&currentTitle)job=jobs.slice().reverse().find(function(x){return String(x.title||"").trim()===currentTitle});
     if(!job)return;
@@ -743,7 +744,7 @@ async function runFullAutopilot(){
   btn.disabled=true;btn.textContent="Autopilot Running…";
   try{
     if(!sessionStorage.getItem("aiNarration")){status.textContent="1/10 • Writing AI script…";await buildScriptDraft()}else status.textContent="1/10 • Script checkpoint reused ✓";if(!sessionStorage.getItem("aiNarration"))throw new Error("Script was not generated.");
-    sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
+    sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");document.getElementById("productionTitle").textContent=selectedTitle;
     var voice=document.getElementById("voicePlayer");if(!voice?.src?.startsWith("data:audio")){status.textContent="2/10 • Restoring voice checkpoint…";var restored=await restorePersistedVoice();if(!restored){status.textContent="2/10 • Generating voice…";await generateServerVoice()}else status.textContent="2/10 • Persisted voice restored ✓"}else status.textContent="2/10 • Voice checkpoint reused ✓";if(!voice?.src?.startsWith("data:audio")){var vs=(document.getElementById("productionStatus")?.textContent||"").trim();throw new Error(vs||"Voice generation failed.")}
     if(!document.querySelectorAll(".generate-scene-media").length){status.textContent="3/10 • Planning visuals…";await generateVisualPlan()}else status.textContent="3/10 • Visual plan checkpoint reused ✓";if(!document.querySelectorAll(".generate-scene-media").length){var vp=sessionStorage.getItem("visualPlanError")||(document.getElementById("visualPlanOutput")?.textContent||"").trim();throw new Error(vp&&vp!=="No visual plan yet."?vp:"Visual plan failed. Check Gemini response.")}
     status.textContent="4/10 • Generating scene visuals…";await generateAllVisuals();var mediaStatus=Array.from(document.querySelectorAll(".scene-media-status")),failedVisual=mediaStatus.find(function(x){return !(x.textContent||"").includes("ready ✓")});if(!mediaStatus.length||failedVisual){var visualError=failedVisual?(failedVisual.textContent||"Visual generation failed."):"No visual scenes were found.";throw new Error(visualError)}
