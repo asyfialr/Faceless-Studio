@@ -223,12 +223,16 @@ async function buildScriptDraft(){
       '<div class="script-block"><h3>Narration Draft</h3><p>'+escapeHtml(x.narration||"")+'</p></div>'+
       '<div class="script-block"><h3>Shorts Angles</h3><ol>'+(x.shortsAngles||[]).map(function(v){return "<li>"+escapeHtml(v)+"</li>"}).join("")+'</ol></div>'+
       '<button id="sendProduction" class="primary">Send to Production</button>';
-    $("sendProduction").onclick=function(){
-      sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");
-      $("productionTitle").textContent=selectedTitle;
-      $("productionStatus").textContent="AI script approved • starting production…";
-      location.hash="productionStudio";
-      setTimeout(function(){runProduction()},350);
+    $("sendProduction").onclick=async function(){
+      var btn=$("sendProduction");btn.disabled=true;btn.textContent="Starting Production…";
+      try{
+        var r=await fetch(API_BASE+"/api/autopilot/handoff",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle})});
+        var data=await r.json();if(!r.ok)throw new Error(data.message||data.error||"Production handoff failed");
+        sessionStorage.setItem("selectedTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");sessionStorage.setItem("autopilotJobId",data.job?.id||"");
+        $("productionTitle").textContent=selectedTitle;
+        $("productionStatus").textContent="Real production started • "+(data.job?.stage||"script-ready");
+        location.hash="productionStudio";
+      }catch(e){btn.disabled=false;btn.textContent="Send to Production";$("scriptOutput").insertAdjacentHTML("beforeend",'<p class="muted">'+escapeHtml(e.message)+'</p>')}
     };
     $("generateScript").textContent="Regenerate with AI";
   }catch(e){
