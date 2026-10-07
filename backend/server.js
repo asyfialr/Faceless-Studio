@@ -653,6 +653,25 @@ app.get("/api/projects/:id",async(req,res)=>{
   catch(e){res.status(404).json({error:"project_not_found"})}
 });
 
+app.get("/api/projects/:id/media-diagnostics",async(req,res)=>{
+  const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
+  const dir=join(storageRoot,id);
+  const probe=async(file)=>{
+    const path=join(dir,file);let s;try{s=await stat(path)}catch{return {file,exists:false}}
+    return await new Promise(resolve=>{
+      const cp=spawn(ffmpegPath,["-v","error","-i",path,"-f","null","-"]);let err="";
+      cp.stderr.on("data",d=>err+=d.toString().slice(-5000));cp.on("error",e=>resolve({file,exists:true,bytes:s.size,valid:false,error:e.message}));
+      cp.on("close",code=>resolve({file,exists:true,bytes:s.size,valid:code===0,ffmpegExitCode:code,error:code===0?null:err.slice(-1200)}));
+    });
+  };
+  try{
+    const meta=JSON.parse(await readFile(join(dir,"project.json"),"utf8"));
+    const files=["long.mp4","long-captioned.mp4","short-1.mp4","short-1-captioned.mp4","short-2.mp4","short-2-captioned.mp4","short-3.mp4","short-3-captioned.mp4"];
+    const media=[];for(const file of files)media.push(await probe(file));
+    res.json({ok:true,projectId:id,title:meta.title||null,longVideoUrl:meta.longVideoUrl||null,shorts:meta.shorts||[],captionTiming:meta.captionTiming||null,media,checkedAt:new Date().toISOString()});
+  }catch(e){res.status(404).json({error:"media_diagnostics_failed",message:e.message})}
+});
+
 app.get("/api/autopilot/config",async(req,res)=>{
   try{const raw=await readFile(join(storageRoot,"autopilot-config.json"),"utf8");res.json(JSON.parse(raw))}
   catch(e){res.json({enabled:false,days:["MON","WED","FRI"],time:"19:00",timeZone:"America/New_York",shortIntervalDays:1,updatedAt:null})}
