@@ -386,31 +386,27 @@ function showReviewMedia(index){
   }else{video.pause();video.removeAttribute("src");video.load();video.style.display="none";placeholder.style.display="";$("previewMessage").textContent="Rendered output unavailable."}
 }
 async function hydrateRealReview(){
-  var jobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
-  if(!jobId)return;
+  var currentTitle=String(localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||selectedTitle||"").trim();
   try{
-    var jr=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),jd=await jr.json(),jobs=jd.jobs||jd.items||[];
-    var completeJobs=jobs.filter(function(x){return x&&x.projectId&&(x.status==="complete"||x.stage==="complete"||x.status==="youtube-complete")});
-    var currentTitle=String(localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||selectedTitle||"").trim();
-    var titleJobs=currentTitle?completeJobs.filter(function(x){return String(x.title||"").trim()===currentTitle}):[];
-    var savedJob=jobs.find(function(x){return x.id===jobId}),job=titleJobs[0]||null;
-    if(!job&&savedJob&&completeJobs.some(function(x){return x.id===savedJob.id})&&String(savedJob.title||"").trim()===currentTitle)job=savedJob;
-    if(!job){$("previewMessage").textContent="No completed production found for current project: "+currentTitle;return}
-    if(!job.projectId)return;
-    jobId=job.id;sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id);
-    localStorage.setItem("facelessReviewProjectId",job.projectId);
-    var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(job.projectId)+"?ts="+Date.now(),{cache:"no-store"});if(!pr.ok)throw new Error("Project output not found");
-    var meta=await pr.json(),shorts=Array.isArray(meta.shorts)?meta.shorts:[];
+    var rr=await fetch(API_BASE+"/api/autopilot/review-ready?title="+encodeURIComponent(currentTitle)+"&ts="+Date.now(),{cache:"no-store"}),rd=await rr.json();
+    if(!rr.ok)throw new Error(rd.message||"No intact production output is ready for review");
+    var job=rd.job,meta=rd.project||{},jobId=job.id;
+    sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id);localStorage.setItem("facelessReviewProjectId",job.projectId);
+    var shorts=Array.isArray(meta.shorts)?meta.shorts:[];
     reviewMedia=[{url:absoluteMediaUrl(meta.longVideoUrl)},{url:absoluteMediaUrl(shorts[0])},{url:absoluteMediaUrl(shorts[1])},{url:absoluteMediaUrl(shorts[2])}];
-    if(meta.title){selectedTitle=meta.title;$("reviewTitle").textContent=meta.title}
+    if(meta.title){selectedTitle=meta.title;$("reviewTitle").textContent=meta.title;localStorage.setItem("facelessCurrentTitle",meta.title)}
     var md=meta.metadata||{};$("youtubeTitle").value=md.longTitle||meta.title||selectedTitle;
     $("youtubeDescription").value=md.description||md.longDescription||("A clear, faceless explainer about "+selectedTitle+".");
     if(meta.thumbnailUrl){$("thumbnailPreview").src=absoluteMediaUrl(meta.thumbnailUrl);$("thumbnailPreview").style.display="block";$("thumbnailStatus").textContent="Thumbnail: production output ready ✓";$("generateThumbnail").style.display="none"}
     showReviewMedia(0);
     document.querySelectorAll(".preview-choice").forEach(function(b){b.onclick=function(){showReviewMedia(Number(b.dataset.preview))}});
     $("previewApprove").onclick=function(){reviewStates[reviewIndex]="approved";renderReview()};
-    $("reviewStatus").textContent="Real production outputs loaded. Review Long + 3 Shorts.";
-  }catch(e){$("previewMessage").textContent="Could not load production outputs • "+e.message}
+    $("reviewStatus").textContent="Verified production outputs loaded • "+job.projectId;
+  }catch(e){
+    reviewMedia=[];$("previewMessage").textContent="Review blocked: "+e.message;
+    $("reviewStatus").textContent="No intact production media is available yet.";
+    var video=$("previewVideo");video.removeAttribute("src");video.load();video.style.display="none";$("previewPlaceholder").style.display="";
+  }
 }
 function setupReview(){
   var ready=sessionStorage.getItem("productionReady")==="1";
