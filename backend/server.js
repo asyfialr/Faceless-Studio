@@ -736,6 +736,21 @@ async function createAutopilotProductionJob(result){
   store.jobs=[job,...(store.jobs||[])].slice(0,100);await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));return job;
 }
 app.get("/api/autopilot/jobs",async(req,res)=>{try{res.json(await cleanupAutopilotPlaceholders(await readAutopilotJobs()))}catch(e){res.status(500).json({error:"autopilot_jobs_failed",message:e.message})}});
+app.get("/api/autopilot/review-ready",async(req,res)=>{
+  try{
+    const wanted=String(req.query?.title||"").trim(),store=await readAutopilotJobs();
+    const jobs=(store.jobs||[]).filter(j=>j.projectId&&(j.stage==="complete"||j.status==="youtube-complete")).sort((a,b)=>String(b.completedAt||b.updatedAt||b.createdAt||"").localeCompare(String(a.completedAt||a.updatedAt||a.createdAt||"")));
+    const ordered=wanted?[...jobs.filter(j=>String(j.title||"").trim()===wanted),...jobs.filter(j=>String(j.title||"").trim()!==wanted)]:jobs;
+    for(const job of ordered){
+      const dir=join(storageRoot,job.projectId),required=["long-captioned.mp4","short-1-captioned.mp4","short-2-captioned.mp4","short-3-captioned.mp4"],files={};let healthy=true;
+      for(const name of required){try{const s=await stat(join(dir,name));files[name]={exists:s.isFile(),bytes:Number(s.size||0)};if(!s.isFile()||s.size<1024)healthy=false}catch{files[name]={exists:false,bytes:0};healthy=false}}
+      if(!healthy)continue;
+      let meta={};try{meta=JSON.parse(await readFile(join(dir,"project.json"),"utf8"))}catch{}
+      return res.json({ok:true,job:{id:job.id,projectId:job.projectId,title:job.title,status:job.status,stage:job.stage,completedAt:job.completedAt||null},project:meta,files});
+    }
+    res.status(404).json({ok:false,error:"no_review_ready_project",message:"No completed project currently has all four review media files.",checkedJobs:ordered.slice(0,10).map(j=>({id:j.id,projectId:j.projectId,title:j.title}))});
+  }catch(e){res.status(500).json({error:"review_ready_failed",message:e.message})}
+});
 app.get("/api/autopilot/audit",async(req,res)=>{try{
   const store=await cleanupAutopilotPlaceholders(await readAutopilotJobs()),jobs=(store.jobs||[]).filter(j=>j.title||j.topicId||j.projectId).slice().sort((a,b)=>String(b.completedAt||b.updatedAt||b.createdAt||"").localeCompare(String(a.completedAt||a.updatedAt||a.createdAt||""))).slice(0,50),items=[];
   for(const j of jobs){
