@@ -984,7 +984,12 @@ async function cleanupCompletedAutopilotMedia(excludeProjectId){
     let meta={};try{meta=JSON.parse(await readFile(join(dir,"project.json"),"utf8"))}catch{}
     if(meta.reviewApproved!==true){console.log("[autopilot] preserve review media",job.projectId);continue}
     let entries=[];try{entries=await readdir(dir,{withFileTypes:true})}catch{continue}
-    for(const e of entries){if(!e.isFile())continue;const n=e.name;if(n==="project.json"||/thumbnail/i.test(n))continue;if(!/\.(mp4|wav|raw|png|jpg|jpeg|webp)$/i.test(n))continue;
+    // Keep final captioned deliverables available for review/download after YouTube completes.
+    // Only remove intermediate media; deleting *-captioned.mp4 left project.json pointing
+    // at /media/... files that no longer existed (Cannot GET /media/.../long-captioned.mp4).
+    for(const e of entries){if(!e.isFile())continue;const n=e.name;
+      if(n==="project.json"||/thumbnail/i.test(n)||/-captioned\.mp4$/i.test(n))continue;
+      if(!/\.(mp4|wav|raw|png|jpg|jpeg|webp)$/i.test(n))continue;
       const p=join(dir,n);try{const s=await stat(p);await rm(p,{force:true});removed++;bytes+=Number(s.size||0)}catch{}}
     if(removed>=12||bytes>=500*1024*1024)break;
   }
