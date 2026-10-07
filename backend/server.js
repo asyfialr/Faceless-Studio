@@ -948,6 +948,24 @@ async function runAutopilotCaptionsWorker(){
   }catch(e){const msg=String(e.message||e),noSpace=/ENOSPC|no space left on device/i.test(msg);if(noSpace){await cleanupAutopilotTempFiles(job.projectId);await cleanupCompletedAutopilotMedia(job.projectId);job.status="shorts-complete";job.stage="awaiting-captions";job.storageRecoveryCount=Number(job.storageRecoveryCount||0)+1;job.lastStorageRecoveryAt=new Date().toISOString();job.error="Storage cleanup performed after ENOSPC; captions queued for retry";job.updatedAt=job.lastStorageRecoveryAt;console.warn("[autopilot] ENOSPC recovery",job.id,job.storageRecoveryCount)}else{job.status="captions-failed";job.stage="captions-error";job.error=msg;job.updatedAt=new Date().toISOString()}await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,msg);return job}
   finally{await cleanupAutopilotTempFiles(job.projectId)}
 }
+app.post("/api/autopilot/jobs/:id/retry-captions",async(req,res)=>{
+  try{
+    const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.id===req.params.id);
+    if(!job)return res.status(404).json({error:"job_not_found"});
+    if(!(job.status==="captions-failed"&&job.stage==="captions-error"))return res.status(409).json({error:"job_not_caption_failed",message:"Only caption-failed jobs can be recovered."});
+    const projectDir=join(storageRoot,job.projectId),metaPath=join(projectDir,"project.json");
+    let meta;try{meta=JSON.parse(await readFile(metaPath,"utf8"))}catch{throw new Error("Project metadata is missing")}
+    if(!meta.narration)throw new Error("Project narration is missing");
+    for(const name of ["long.mp4","short-1.mp4","short-2.mp4","short-3.mp4"]){try{await stat(join(projectDir,name))}catch{throw new Error("Required rendered asset is missing: "+name)}}
+    await rm(join(projectDir,".caption-scratch"),{recursive:true,force:true}).catch(()=>{});
+    for(const name of ["long-captioned.mp4","short-1-captioned.mp4","short-2-captioned.mp4","short-3-captioned.mp4"]){await rm(join(projectDir,name),{force:true}).catch(()=>{})}
+    job.status="shorts-complete";job.stage="awaiting-captions";job.captionRecoveryCount=Number(job.captionRecoveryCount||0)+1;job.captionRecoveryAt=new Date().toISOString();job.autoRetryCount=0;job.updatedAt=job.captionRecoveryAt;delete job.error;
+    await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
+    console.log("[autopilot] caption recovery queued",job.id,job.captionRecoveryCount);
+    res.json({ok:true,job:{id:job.id,title:job.title,status:job.status,stage:job.stage,captionRecoveryCount:job.captionRecoveryCount},message:"Caption stage reset safely; existing voice, visuals, long render and Shorts were preserved."});
+  }catch(e){res.status(500).json({error:"caption_recovery_failed",message:e.message})}
+});
+
 async function runAutopilotMetadataThumbnailWorker(){
   const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-metadata"&&j.status==="captions-complete");if(!job)return null;
   job.status="running";job.stage="metadata-generating";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
