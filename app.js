@@ -366,16 +366,44 @@ async function syncAutopilotProductionUI(){
 }
 syncAutopilotProductionUI();
 
-var reviewStates=["pending","pending","pending","pending"];
+var reviewStates=["pending","pending","pending","pending"],reviewMedia=[],reviewIndex=0;
+function absoluteMediaUrl(url){return url?(String(url).startsWith("http")?String(url):API_BASE+String(url)):""}
+function showReviewMedia(index){
+  reviewIndex=index;var item=reviewMedia[index]||{},video=$("previewVideo"),placeholder=$("previewPlaceholder"),stage=$("videoStage");
+  document.querySelectorAll(".preview-choice").forEach(function(b){b.classList.toggle("active",Number(b.dataset.preview)===index)});
+  $("previewName").textContent=index===0?"Long Video":"Short #00"+index;$("previewBadge").textContent=index===0?"16:9":"9:16";
+  stage.classList.toggle("landscape",index===0);stage.classList.toggle("portrait",index!==0);
+  if(item.url){video.src=item.url;video.style.display="block";placeholder.style.display="none";$("previewMessage").textContent="Real rendered output • "+(index===0?"captioned long video":"captioned Short #"+index)}
+  else{video.removeAttribute("src");video.load();video.style.display="none";placeholder.style.display="";$("previewMessage").textContent="Rendered output unavailable."}
+}
+async function hydrateRealReview(){
+  var jobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
+  if(!jobId)return;
+  try{
+    var jr=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),jd=await jr.json(),jobs=jd.jobs||jd.items||[],job=jobs.find(function(x){return x.id===jobId});
+    if(!job||!job.projectId)return;
+    var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(job.projectId)+"?ts="+Date.now(),{cache:"no-store"});if(!pr.ok)throw new Error("Project output not found");
+    var meta=await pr.json(),shorts=Array.isArray(meta.shorts)?meta.shorts:[];
+    reviewMedia=[{url:absoluteMediaUrl(meta.longVideoUrl)},{url:absoluteMediaUrl(shorts[0])},{url:absoluteMediaUrl(shorts[1])},{url:absoluteMediaUrl(shorts[2])}];
+    if(meta.title){selectedTitle=meta.title;$("reviewTitle").textContent=meta.title}
+    var md=meta.metadata||{};$("youtubeTitle").value=md.longTitle||meta.title||selectedTitle;
+    $("youtubeDescription").value=md.description||md.longDescription||("A clear, faceless explainer about "+selectedTitle+".");
+    if(meta.thumbnailUrl){$("thumbnailPreview").src=absoluteMediaUrl(meta.thumbnailUrl);$("thumbnailPreview").style.display="block";$("thumbnailStatus").textContent="Thumbnail: production output ready ✓";$("generateThumbnail").style.display="none"}
+    showReviewMedia(0);
+    document.querySelectorAll(".preview-choice").forEach(function(b){b.onclick=function(){showReviewMedia(Number(b.dataset.preview))}});
+    $("previewApprove").onclick=function(){reviewStates[reviewIndex]="approved";renderReview()};
+    $("reviewStatus").textContent="Real production outputs loaded. Review Long + 3 Shorts.";
+  }catch(e){$("previewMessage").textContent="Could not load production outputs • "+e.message}
+}
 function setupReview(){
   var ready=sessionStorage.getItem("productionReady")==="1";
   $("reviewTitle").textContent=ready?selectedTitle:"No production ready";
   if(ready){
     $("youtubeTitle").value=selectedTitle;
     $("youtubeDescription").value="A clear, faceless explainer about "+selectedTitle+".";
-    $("reviewStatus").textContent="Review the long video and all Shorts.";
+    $("reviewStatus").textContent="Loading real production outputs…";
   }
-  renderReview();
+  renderReview();if(ready)hydrateRealReview();
 }
 function renderReview(){
   var labels=[["Long Video","16:9 • 8–10 min"],["Short #001","9:16 • Highlight 1"],["Short #002","9:16 • Highlight 2"],["Short #003","9:16 • Highlight 3"]];
