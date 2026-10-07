@@ -280,6 +280,28 @@ if(sessionStorage.getItem("scriptReady")==="1"){
   $("productionStatus").textContent="Script approved. Production is ready to start.";
 }
 
+async function syncAutopilotProductionUI(){
+  var jobId=sessionStorage.getItem("autopilotJobId");if(!jobId)return;
+  try{
+    var r=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),d=await r.json();
+    var jobs=d.jobs||d.items||[],job=jobs.find(function(x){return x.id===jobId});
+    if(!job)return;
+    var complete=job.status==="youtube-complete"||job.stage==="complete";
+    if(complete){
+      sessionStorage.setItem("productionReady","1");
+      $("productionStatus").textContent="Production complete. Outputs are ready for review.";
+      var manual=$("manualProductionControls"),done=$("autopilotProductionComplete");
+      if(manual)manual.hidden=true;if(done)done.hidden=false;
+      $("productionSteps").innerHTML="";$("productionResult").innerHTML="";
+      setupReview();
+    }else{
+      $("productionStatus").textContent="Autopilot production • "+(job.stage||job.status||"working")+"…";
+      setTimeout(syncAutopilotProductionUI,5000);
+    }
+  }catch(e){setTimeout(syncAutopilotProductionUI,8000)}
+}
+if(sessionStorage.getItem("autopilotJobId"))syncAutopilotProductionUI();
+
 var reviewStates=["pending","pending","pending","pending"];
 function setupReview(){
   var ready=sessionStorage.getItem("productionReady")==="1";
