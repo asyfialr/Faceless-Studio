@@ -375,7 +375,7 @@ function showReviewMedia(index){
   stage.classList.toggle("landscape",index===0);stage.classList.toggle("portrait",index!==0);
   if(item.url){
     video.pause();video.removeAttribute("src");video.load();
-    video.setAttribute("playsinline","");video.setAttribute("webkit-playsinline","");video.preload="metadata";
+    video.setAttribute("playsinline","");video.setAttribute("webkit-playsinline","");video.setAttribute("crossorigin","anonymous");video.crossOrigin="anonymous";video.preload="metadata";
     video.src=item.url+(item.url.indexOf("?")>=0?"&":"?")+"v="+Date.now();video.style.display="block";placeholder.style.display="none";
     $("previewMessage").textContent="Loading real rendered output…";video.load();
     video.onloadedmetadata=function(){$("previewMessage").textContent="Real rendered output • "+(index===0?"captioned long video":"captioned Short #"+index)+" • "+Math.round(video.duration)+"s"};
