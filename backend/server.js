@@ -45,7 +45,7 @@ app.post("/api/ai/ideas",async(req,res)=>{
   if(!geminiKey&&!openaiKey)return res.status(503).json({error:"ai_not_configured",message:"No AI provider is configured."});
   const prompt="Generate exactly 4 original faceless YouTube video ideas for the niche: "+niche+"\nTarget audience: "+audience+"\nPrioritize evergreen or timely-interest concepts with a clear curiosity gap, useful payoff, and strong potential for one Long video plus three distinct Shorts. Avoid fake urgency, unsupported claims, repetitive angles, and generic titles. Return ONLY valid JSON with key ideas, an array of exactly 4 objects. Each object must have title (max 85 characters), angle (one concise sentence), and hook (one concise sentence).";
   async function normalize(raw,provider,model){
-    const parsed=JSON.parse(raw),items=Array.isArray(parsed?.ideas)?parsed.ideas.slice(0,4):[];
+    const parsed=JSON.parse(raw),source=Array.isArray(parsed)?parsed:(Array.isArray(parsed?.ideas)?parsed.ideas:(Array.isArray(parsed?.Ideas)?parsed.Ideas:[])),items=source.slice(0,4);
     const ideas=items.map(x=>({title:String(x?.title||"").trim().slice(0,85),angle:String(x?.angle||"").trim().slice(0,220),hook:String(x?.hook||"").trim().slice(0,220)})).filter(x=>x.title);
     if(ideas.length!==4)throw new Error("AI provider did not return exactly 4 valid ideas");
     return {ok:true,provider,model:model||null,ideas};
