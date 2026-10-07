@@ -249,7 +249,7 @@ async function buildScriptDraft(){
       try{
         var r=await fetch(API_BASE+"/api/autopilot/handoff",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle})});
         var data=await r.json();if(!r.ok)throw new Error(data.message||data.error||"Production handoff failed");
-        sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");sessionStorage.setItem("autopilotJobId",data.job?.id||"");localStorage.setItem("facelessAutopilotJobId",data.job?.id||"");
+        sessionStorage.setItem("selectedTitle",selectedTitle);localStorage.setItem("facelessCurrentTitle",selectedTitle);sessionStorage.setItem("scriptReady","1");sessionStorage.setItem("autopilotJobId",data.job?.id||"");localStorage.setItem("facelessAutopilotJobId",data.job?.id||"");if(data.job?.projectId)localStorage.setItem("facelessReviewProjectId",data.job.projectId);
         $("productionTitle").textContent=selectedTitle;
         $("productionStatus").textContent="Real production started • "+(data.job?.stage||"script-ready");
         location.hash="productionStudio";
@@ -390,10 +390,15 @@ async function hydrateRealReview(){
   if(!jobId)return;
   try{
     var jr=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),jd=await jr.json(),jobs=jd.jobs||jd.items||[];
-    var completeJobs=jobs.filter(function(x){return x&&x.projectId&&(x.status==="complete"||x.stage==="complete"||x.status==="youtube-complete")}).sort(function(a,b){return new Date(b.updatedAt||b.completedAt||b.createdAt||0)-new Date(a.updatedAt||a.completedAt||a.createdAt||0)});
-    var savedJob=jobs.find(function(x){return x.id===jobId}),job=savedJob&&completeJobs.some(function(x){return x.id===savedJob.id})?savedJob:completeJobs[0];
-    if(!job||!job.projectId)return;
-    if(job.id!==jobId){jobId=job.id;sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id)}
+    var completeJobs=jobs.filter(function(x){return x&&x.projectId&&(x.status==="complete"||x.stage==="complete"||x.status==="youtube-complete")});
+    var currentTitle=String(localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||selectedTitle||"").trim();
+    var titleJobs=currentTitle?completeJobs.filter(function(x){return String(x.title||"").trim()===currentTitle}):[];
+    var savedJob=jobs.find(function(x){return x.id===jobId}),job=titleJobs[titleJobs.length-1]||null;
+    if(!job&&savedJob&&completeJobs.some(function(x){return x.id===savedJob.id})&&String(savedJob.title||"").trim()===currentTitle)job=savedJob;
+    if(!job){$("previewMessage").textContent="No completed production found for current project: "+currentTitle;return}
+    if(!job.projectId)return;
+    jobId=job.id;sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id);
+    localStorage.setItem("facelessReviewProjectId",job.projectId);
     var pr=await fetch(API_BASE+"/api/projects/"+encodeURIComponent(job.projectId)+"?ts="+Date.now(),{cache:"no-store"});if(!pr.ok)throw new Error("Project output not found");
     var meta=await pr.json(),shorts=Array.isArray(meta.shorts)?meta.shorts:[];
     reviewMedia=[{url:absoluteMediaUrl(meta.longVideoUrl)},{url:absoluteMediaUrl(shorts[0])},{url:absoluteMediaUrl(shorts[1])},{url:absoluteMediaUrl(shorts[2])}];
