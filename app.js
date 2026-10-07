@@ -393,7 +393,7 @@ async function hydrateRealReview(){
     var completeJobs=jobs.filter(function(x){return x&&x.projectId&&(x.status==="complete"||x.stage==="complete"||x.status==="youtube-complete")});
     var currentTitle=String(localStorage.getItem("facelessCurrentTitle")||sessionStorage.getItem("selectedTitle")||selectedTitle||"").trim();
     var titleJobs=currentTitle?completeJobs.filter(function(x){return String(x.title||"").trim()===currentTitle}):[];
-    var savedJob=jobs.find(function(x){return x.id===jobId}),job=titleJobs[titleJobs.length-1]||null;
+    var savedJob=jobs.find(function(x){return x.id===jobId}),job=titleJobs[0]||null;
     if(!job&&savedJob&&completeJobs.some(function(x){return x.id===savedJob.id})&&String(savedJob.title||"").trim()===currentTitle)job=savedJob;
     if(!job){$("previewMessage").textContent="No completed production found for current project: "+currentTitle;return}
     if(!job.projectId)return;
