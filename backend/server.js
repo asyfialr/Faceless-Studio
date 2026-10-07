@@ -595,7 +595,23 @@ app.post("/api/render/shorts",async(req,res)=>{
 });
 
 
-app.use("/media",express.static(storageRoot,{maxAge:"1h"}));
+app.get("/media/:projectId/:file",async(req,res,next)=>{
+  const projectId=String(req.params.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),file=String(req.params.file||"");
+  if(!projectId||!/^[a-zA-Z0-9._-]+$/.test(file))return res.status(400).end();
+  const path=join(storageRoot,projectId,file);let s;try{s=await stat(path);if(!s.isFile())return next()}catch{return next()}
+  const ext=file.toLowerCase().split(".").pop(),types={mp4:"video/mp4",wav:"audio/wav",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
+  res.setHeader("Content-Type",types[ext]||"application/octet-stream");res.setHeader("Accept-Ranges","bytes");res.setHeader("Cache-Control","public, max-age=3600");
+  const range=req.headers.range;
+  if(range&&ext==="mp4"){
+    const m=/bytes=(\d*)-(\d*)/.exec(range);if(!m)return res.status(416).setHeader("Content-Range","bytes */"+s.size).end();
+    let start=m[1]?Number(m[1]):0,end=m[2]?Number(m[2]):s.size-1;if(!m[1]&&m[2]){const n=Number(m[2]);start=Math.max(0,s.size-n);end=s.size-1}
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||start>=s.size||end<start){res.status(416).setHeader("Content-Range","bytes */"+s.size);return res.end()}
+    end=Math.min(end,s.size-1);res.status(206);res.setHeader("Content-Range","bytes "+start+"-"+end+"/"+s.size);res.setHeader("Content-Length",end-start+1);
+    const {createReadStream}=await import("node:fs");return createReadStream(path,{start,end}).pipe(res);
+  }
+  res.setHeader("Content-Length",s.size);const {createReadStream}=await import("node:fs");createReadStream(path).pipe(res);
+});
+app.use("/media",express.static(storageRoot,{maxAge:"1h",acceptRanges:true}));
 app.post("/api/projects/:id/checkpoint",async(req,res)=>{
   const id=String(req.params.id||"").replace(/[^a-zA-Z0-9_-]/g,"");if(!id)return res.status(400).json({error:"invalid_project_id"});
   try{
