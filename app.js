@@ -224,8 +224,28 @@ async function buildScriptDraft(){
       '<div class="script-block"><h3>Narration Draft</h3><p>'+escapeHtml(x.narration||"")+'</p></div>'+
       '<div class="script-block"><h3>Shorts Angles</h3><ol>'+(x.shortsAngles||[]).map(function(v){return "<li>"+escapeHtml(v)+"</li>"}).join("")+'</ol></div>'+
       '<button id="sendProduction" class="primary">Send to Production</button>';
+    async function syncScriptHandoffButton(){
+      var btn=$("sendProduction");if(!btn)return;
+      try{
+        var r=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),d=await r.json();
+        var jobs=d.jobs||d.items||[],savedId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
+        var job=jobs.find(function(x){return x.id===savedId})||jobs.slice().reverse().find(function(x){return String(x.title||"").trim()===String(selectedTitle||"").trim()});
+        if(job){
+          var active=!(job.status==="youtube-complete"||job.stage==="complete"||String(job.status||"").endsWith("-failed")||String(job.stage||"").endsWith("-error"));
+          if(active){
+            sessionStorage.setItem("autopilotJobId",job.id||"");localStorage.setItem("facelessAutopilotJobId",job.id||"");
+            btn.disabled=false;btn.textContent="View Production →";btn.dataset.viewProduction="1";
+          }else if(job.status==="youtube-complete"||job.stage==="complete"){
+            btn.disabled=false;btn.textContent="Review Outputs →";btn.dataset.viewProduction="1";
+          }
+        }
+      }catch(e){}
+    }
     $("sendProduction").onclick=async function(){
-      var btn=$("sendProduction");btn.disabled=true;btn.textContent="Starting Production…";
+      var btn=$("sendProduction");
+      if(btn.dataset.viewProduction==="1"){location.hash="productionStudio";return}
+      btn.disabled=true;btn.textContent="Starting Production…";
+      var oldNotice=$("scriptHandoffNotice");if(oldNotice)oldNotice.remove();
       try{
         var r=await fetch(API_BASE+"/api/autopilot/handoff",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:selectedTitle})});
         var data=await r.json();if(!r.ok)throw new Error(data.message||data.error||"Production handoff failed");
@@ -233,8 +253,13 @@ async function buildScriptDraft(){
         $("productionTitle").textContent=selectedTitle;
         $("productionStatus").textContent="Real production started • "+(data.job?.stage||"script-ready");
         location.hash="productionStudio";
-      }catch(e){btn.disabled=false;btn.textContent="Send to Production";$("scriptOutput").insertAdjacentHTML("beforeend",'<p class="muted">'+escapeHtml(e.message)+'</p>')}
+      }catch(e){
+        btn.disabled=false;btn.textContent="Send to Production";
+        $("scriptOutput").insertAdjacentHTML("beforeend",'<p id="scriptHandoffNotice" class="muted">'+escapeHtml(e.message)+'</p>');
+        syncScriptHandoffButton();
+      }
     };
+    syncScriptHandoffButton();
     $("generateScript").textContent="Regenerate with AI";
   }catch(e){
     $("scriptOutput").classList.remove("empty");
