@@ -373,8 +373,17 @@ function showReviewMedia(index){
   document.querySelectorAll(".preview-choice").forEach(function(b){b.classList.toggle("active",Number(b.dataset.preview)===index)});
   $("previewName").textContent=index===0?"Long Video":"Short #00"+index;$("previewBadge").textContent=index===0?"16:9":"9:16";
   stage.classList.toggle("landscape",index===0);stage.classList.toggle("portrait",index!==0);
-  if(item.url){video.src=item.url;video.style.display="block";placeholder.style.display="none";$("previewMessage").textContent="Real rendered output • "+(index===0?"captioned long video":"captioned Short #"+index)}
-  else{video.removeAttribute("src");video.load();video.style.display="none";placeholder.style.display="";$("previewMessage").textContent="Rendered output unavailable."}
+  if(item.url){
+    video.pause();video.removeAttribute("src");video.load();
+    video.setAttribute("playsinline","");video.setAttribute("webkit-playsinline","");video.preload="metadata";
+    video.src=item.url+(item.url.indexOf("?")>=0?"&":"?")+"v="+Date.now();video.style.display="block";placeholder.style.display="none";
+    $("previewMessage").textContent="Loading real rendered output…";video.load();
+    video.onloadedmetadata=function(){$("previewMessage").textContent="Real rendered output • "+(index===0?"captioned long video":"captioned Short #"+index)+" • "+Math.round(video.duration)+"s"};
+    video.onerror=function(){
+      var code=video.error&&video.error.code?video.error.code:"unknown";
+      $("previewMessage").innerHTML='Mobile preview could not decode this stream (code '+code+'). <a href="'+item.url+'" target="_blank" rel="noopener">Open video directly ↗</a>';
+    };
+  }else{video.pause();video.removeAttribute("src");video.load();video.style.display="none";placeholder.style.display="";$("previewMessage").textContent="Rendered output unavailable."}
 }
 async function hydrateRealReview(){
   var jobId=sessionStorage.getItem("autopilotJobId")||localStorage.getItem("facelessAutopilotJobId")||"";
