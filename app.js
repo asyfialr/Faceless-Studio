@@ -281,10 +281,12 @@ if(sessionStorage.getItem("scriptReady")==="1"){
 }
 
 async function syncAutopilotProductionUI(){
-  var jobId=sessionStorage.getItem("autopilotJobId");if(!jobId)return;
+  var jobId=sessionStorage.getItem("autopilotJobId")||"";
   try{
     var r=await fetch(API_BASE+"/api/autopilot/jobs?ts="+Date.now(),{cache:"no-store"}),d=await r.json();
-    var jobs=d.jobs||d.items||[],job=jobs.find(function(x){return x.id===jobId});
+    var jobs=d.jobs||d.items||[],currentTitle=String(sessionStorage.getItem("selectedTitle")||$("productionTitle")?.textContent||"").trim();
+    var job=jobs.find(function(x){return x.id===jobId});
+    if(!job&&currentTitle)job=jobs.slice().reverse().find(function(x){return String(x.title||"").trim()===currentTitle});
     if(!job)return;
     var complete=job.status==="youtube-complete"||job.stage==="complete";
     if(complete){
@@ -300,7 +302,7 @@ async function syncAutopilotProductionUI(){
     }
   }catch(e){setTimeout(syncAutopilotProductionUI,8000)}
 }
-if(sessionStorage.getItem("autopilotJobId"))syncAutopilotProductionUI();
+syncAutopilotProductionUI();
 
 var reviewStates=["pending","pending","pending","pending"];
 function setupReview(){
