@@ -44,7 +44,8 @@ function renderIdeas(){
       $("scriptTitle").textContent=selectedTitle;
       $("scriptOutput").textContent="Idea selected • preparing AI script…";
       $("scriptOutput").classList.add("empty");
-      setTimeout(function(){buildScriptDraft()},120);
+      location.hash="scriptStudio";
+      setTimeout(function(){buildScriptDraft()},350);
     });
   });
 }
