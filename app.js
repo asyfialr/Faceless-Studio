@@ -314,15 +314,24 @@ async function syncAutopilotProductionUI(){
     var job=jobs.find(function(x){return x.id===jobId});
     if(!job&&currentTitle)job=jobs.slice().reverse().find(function(x){return String(x.title||"").trim()===currentTitle});
     if(!job)return;
+    var hydratedTitle=String(job.title||currentTitle||"").trim();
+    if(hydratedTitle){
+      selectedTitle=hydratedTitle;
+      sessionStorage.setItem("selectedTitle",hydratedTitle);localStorage.setItem("facelessCurrentTitle",hydratedTitle);
+      if($("productionTitle"))$("productionTitle").textContent=hydratedTitle;
+    }
+    if(job.id){sessionStorage.setItem("autopilotJobId",job.id);localStorage.setItem("facelessAutopilotJobId",job.id)}
     var complete=job.status==="youtube-complete"||job.stage==="complete";
+    var manual=$("manualProductionControls"),done=$("autopilotProductionComplete");
+    if(manual)manual.hidden=true;
     if(complete){
       sessionStorage.setItem("productionReady","1");
-      $("productionStatus").textContent="Production complete. Outputs are ready for review.";
-      var manual=$("manualProductionControls"),done=$("autopilotProductionComplete");
-      if(manual)manual.hidden=true;if(done)done.hidden=false;
+      $("productionStatus").textContent="Production complete • ready for review ✓";
+      if(done)done.hidden=false;
       $("productionSteps").innerHTML="";$("productionResult").innerHTML="";
       setupReview();
     }else{
+      if(done)done.hidden=true;
       $("productionStatus").textContent="Autopilot production • "+(job.stage||job.status||"working")+"…";
       setTimeout(syncAutopilotProductionUI,5000);
     }
