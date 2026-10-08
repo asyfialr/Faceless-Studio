@@ -81,6 +81,28 @@ async function refreshAutopilotMonitor(){
     try{var er=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"});if(er.ok){var ed=await er.json(),eo=$("monitorEngine");if(eo)eo.textContent="Autopilot engine: "+(ed.enabled?"RUNNING ✓":"PAUSED")+" • "+(ed.config?.time||"19:00")+" "+(ed.config?.timeZone||"America/New_York");var et=$("monitorEngineToggle");if(et){et.disabled=false;et.dataset.action=ed.enabled?"pause":"resume";et.textContent=ed.enabled?"Pause Autopilot":"Resume Autopilot"}}}catch(_){}
   }catch(e){badge.textContent="RETRYING";$("monitorLatest").textContent="Backend is waking up or connection changed. Retrying automatically…";$("monitorChecks").textContent="Last dashboard values are kept until the backend responds."}
 }
+async function retryFailedCaptions(){
+  var btn=$("monitorRetryCaptions"),msg=$("monitorRetryStatus");
+  if(!btn||!msg)return;
+  btn.disabled=true;msg.textContent="Checking failed caption jobs…";
+  try{
+    var response=await fetch(API_BASE+"/api/autopilot/jobs",{cache:"no-store"});
+    var store=await response.json();if(!response.ok)throw new Error(store.message||store.error||"Cannot load jobs");
+    var jobs=(store.jobs||[]).filter(function(j){return j.status==="captions-failed"&&j.stage==="captions-error"});
+    if(!jobs.length)throw new Error("No caption-failed jobs found.");
+    jobs.sort(function(x,y){return String(y.updatedAt||"").localeCompare(String(x.updatedAt||""))});
+    var job=jobs[0];
+    if(!window.confirm("Retry captions for: "+(job.title||job.id)+"? Existing source videos must still be available.")){msg.textContent="Recovery cancelled.";return}
+    msg.textContent="Checking source media and queuing recovery…";
+    var r=await fetch(API_BASE+"/api/autopilot/jobs/"+encodeURIComponent(job.id)+"/retry-captions",{method:"POST"});
+    var data=await r.json();if(!r.ok)throw new Error(data.message||data.error||"Retry failed");
+    msg.textContent="Caption retry queued for "+(job.title||job.id)+". Check Production Monitor for progress.";
+    await refreshAutopilotMonitor();
+  }catch(e){msg.textContent="Caption recovery: "+(e.message||e)}
+  finally{btn.disabled=false}
+}
+var retryCaptionButton=$("monitorRetryCaptions");if(retryCaptionButton)retryCaptionButton.addEventListener("click",retryFailedCaptions);
+
 async function refreshAutopilotEngine(){
   var out=$("monitorEngine"),t=$("monitorEngineToggle");if(!out)return;
   try{var r=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);out.textContent="Autopilot engine: "+(d.enabled?"RUNNING ✓":"PAUSED")+" • "+(d.config?.time||"19:00")+" "+(d.config?.timeZone||"America/New_York");if(t){t.disabled=false;t.dataset.action=d.enabled?"pause":"resume";t.textContent=d.enabled?"Pause Autopilot":"Resume Autopilot"}}catch(e){out.textContent="Autopilot engine: status unavailable";if(t){t.disabled=true;t.textContent="Autopilot unavailable"}}
