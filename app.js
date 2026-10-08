@@ -94,8 +94,14 @@ async function retryFailedCaptions(){
       return j.status==="captions-failed"&&j.stage==="captions-error"&&!j.completedAt&&!j.youtubeVerified;
     });
     if(!jobs.length)throw new Error("No caption-failed jobs found.");
-    jobs.sort(function(x,y){return String(y.updatedAt||"").localeCompare(String(x.updatedAt||""))});
-    var job=jobs[0];
+    // Multiple failed jobs can exist; never silently choose the most recent one.
+    // The default is the known unresolved job, when present.
+    var preferredId="bfe6aa1d-093c-4a94-ad8e-cd301b53a8b3";
+    var job=jobs.find(function(j){return j.id===preferredId});
+    if(!job){
+      jobs.sort(function(x,y){return String(x.updatedAt||"").localeCompare(String(y.updatedAt||""))});
+      job=jobs[0];
+    }
     if(!window.confirm("Retry captions for: "+(job.title||job.id)+"? Existing source videos must still be available.")){msg.textContent="Recovery cancelled.";return}
     msg.textContent="Checking source media and queuing recovery…";
     var r=await fetch(API_BASE+"/api/autopilot/jobs/"+encodeURIComponent(job.id)+"/retry-captions",{method:"POST"});
