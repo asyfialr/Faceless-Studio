@@ -276,7 +276,7 @@ app.post("/api/captions/analyze",async(req,res)=>{
   }catch(e){console.error("Caption timing analyze failed",e);res.status(500).json({error:e.message||"Caption timing analysis failed"})}
 });
 
-app.post("/api/render/captions",async(req,res)=>{
+async function executeCaptionRender(req,res){
   const projectId=String(req.body?.projectId||"").replace(/[^a-zA-Z0-9_-]/g,""),narration=String(req.body?.narration||"").trim();
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
   const projectDir=join(storageRoot,projectId),captionScratch=join(projectDir,".caption-scratch"),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);await rm(captionScratch,{recursive:true,force:true}).catch(()=>{});await mkdir(captionScratch,{recursive:true});
@@ -348,8 +348,8 @@ app.post("/api/render/captions",async(req,res)=>{
     res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
   }catch(error){res.status(500).json({error:"caption_render_failed",message:error.message})}
   finally{await rm(captionScratch,{recursive:true,force:true}).catch(()=>{})}
-});
-
+}
+app.post("/api/render/captions", executeCaptionRender);
 const youtubeTokenPath=join(storageRoot,"youtube-oauth.json");
 const youtubeRedirect=()=>process.env.YOUTUBE_REDIRECT_URI||"https://faceless-studio-production-c487.up.railway.app/api/youtube/callback";
 const youtubeConfigured=()=>Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET);
@@ -1005,12 +1005,34 @@ async function runAutopilotCaptionsWorker(){
     const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));if(!meta.narration)throw new Error("Project narration is missing");
     // Use the local listener regardless of an outdated external INTERNAL_BASE_URL.
     // Surface the underlying network cause instead of the opaque "fetch failed".
-    const base="http://127.0.0.1:"+port;
-    let r;
-    try{r=await fetch(base+"/api/render/captions",{method:"POST",dispatcher:captionHttpAgent,signal:AbortSignal.timeout(35*60*1000),headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:job.projectId,narration:meta.narration,longDuration:job.longDuration||0})})}
-    catch(e){throw new Error("Local caption renderer request failed ("+base+"): "+String(e.cause?.message||e.message||e))}
-    let data;try{data=await r.json()}catch(e){throw new Error("Caption renderer returned invalid response: HTTP "+r.status+" "+String(e.message||e))}
-    if(!r.ok)throw new Error(data?.message||data?.error||("Caption renderer HTTP "+r.status));
+    let result;
+
+const req = {
+  body: {
+    projectId: job.projectId,
+    narration: meta.narration,
+    longDuration: job.longDuration
+  }
+};
+
+const res = {
+  status(code) {
+    this.statusCode = code;
+    return this;
+  },
+  json(data) {
+    result = data;
+    return this;
+  }
+};
+
+await executeCaptionRender(req, res);
+
+if (res.statusCode >= 400 || result?.error) {
+  throw new Error(result?.message || result?.error || "Caption rendering failed");
+}
+
+const data = result;
     const updated=JSON.parse(await readFile(path,"utf8"));updated.captionTimingReady=true;updated.captionsReady=true;updated.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(updated,null,2));
     job.status="captions-complete";job.stage="awaiting-metadata";job.captionEngine=data.captionEngine||"segmented-overlay";job.captionTiming=data.captionTiming||"unknown";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] captions complete",job.id,job.captionTiming);return job
   }catch(e){const msg=String(e.message||e),noSpace=/ENOSPC|no space left on device/i.test(msg);if(noSpace){await cleanupAutopilotTempFiles(job.projectId);await cleanupCompletedAutopilotMedia(job.projectId);job.status="shorts-complete";job.stage="awaiting-captions";job.storageRecoveryCount=Number(job.storageRecoveryCount||0)+1;job.lastStorageRecoveryAt=new Date().toISOString();job.error="Storage cleanup performed after ENOSPC; captions queued for retry";job.updatedAt=job.lastStorageRecoveryAt;console.warn("[autopilot] ENOSPC recovery",job.id,job.storageRecoveryCount)}else{job.status="captions-failed";job.stage="captions-error";job.error=msg;job.updatedAt=new Date().toISOString()}await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.error("[autopilot] captions failed",job.id,msg);return job}
