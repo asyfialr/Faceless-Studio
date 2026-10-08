@@ -1000,7 +1000,13 @@ async function runAutopilotCaptionsWorker(){
   job.status="running";job.stage="captions-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));if(!meta.narration)throw new Error("Project narration is missing");
-    const base=process.env.INTERNAL_BASE_URL||("http://127.0.0.1:"+port),r=await fetch(base+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:job.projectId,narration:meta.narration,longDuration:job.longDuration||0})}),data=await r.json();
+    // Use the local listener regardless of an outdated external INTERNAL_BASE_URL.
+    // Surface the underlying network cause instead of the opaque "fetch failed".
+    const base="http://127.0.0.1:"+port;
+    let r;
+    try{r=await fetch(base+"/api/render/captions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:job.projectId,narration:meta.narration,longDuration:job.longDuration||0})})}
+    catch(e){throw new Error("Local caption renderer request failed ("+base+"): "+String(e.cause?.message||e.message||e))}
+    let data;try{data=await r.json()}catch(e){throw new Error("Caption renderer returned invalid response: HTTP "+r.status+" "+String(e.message||e))}
     if(!r.ok)throw new Error(data?.message||data?.error||("Caption renderer HTTP "+r.status));
     const updated=JSON.parse(await readFile(path,"utf8"));updated.captionTimingReady=true;updated.captionsReady=true;updated.updatedAt=new Date().toISOString();await writeFile(path,JSON.stringify(updated,null,2));
     job.status="captions-complete";job.stage="awaiting-metadata";job.captionEngine=data.captionEngine||"segmented-overlay";job.captionTiming=data.captionTiming||"unknown";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));console.log("[autopilot] captions complete",job.id,job.captionTiming);return job
