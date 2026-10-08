@@ -281,7 +281,16 @@ async function executeCaptionRender(req,res){
   if(!projectId||!narration)return res.status(400).json({error:"caption_assets_required"});
   const projectDir=join(storageRoot,projectId),captionScratch=join(projectDir,".caption-scratch"),words=narration.replace(/\s+/g," ").split(" ").filter(Boolean);await rm(captionScratch,{recursive:true,force:true}).catch(()=>{});await mkdir(captionScratch,{recursive:true});
   const xml=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const ff=(args,label)=>new Promise((resolve,reject)=>{const cp=spawn(ffmpegPath,args);let err="";cp.stderr.on("data",d=>err+=d.toString().slice(-2500));cp.on("error",reject);cp.on("close",(code,signal)=>code===0?resolve():reject(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))))});
+  const ff=(args,label)=>new Promise((resolve,reject)=>{
+    const cp=spawn(ffmpegPath,["-nostdin",...args]);let err="",settled=false,timedOut=false;
+    // Allow long caption segments and concat operations; abort a stuck process.
+    const timeoutMs=10*60*1000;
+    const timer=setTimeout(()=>{timedOut=true;cp.kill("SIGKILL")},timeoutMs);
+    const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve()};
+    cp.stderr.on("data",d=>{err=(err+d.toString()).slice(-2500)});
+    cp.on("error",finish);
+    cp.on("close",(code,signal)=>timedOut?finish(new Error(label+" timed out after "+timeoutMs+"ms")):code===0?finish():finish(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))));
+  });
   const getSpeechWindows=async(audioPath,duration,count)=>{
     if(!count)return [];
     const raw=join(captionScratch,"caption-audio.raw");
