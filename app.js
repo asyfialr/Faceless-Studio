@@ -88,7 +88,11 @@ async function retryFailedCaptions(){
   try{
     var response=await fetch(API_BASE+"/api/autopilot/jobs",{cache:"no-store"});
     var store=await response.json();if(!response.ok)throw new Error(store.message||store.error||"Cannot load jobs");
-    var jobs=(store.jobs||[]).filter(function(j){return j.status==="captions-failed"&&j.stage==="captions-error"});
+    // A completed job can retain stale failure metadata after recovery; exclude it.
+    // Prefer jobs which have never reached completion over stale caption-failure records.
+    var jobs=(store.jobs||[]).filter(function(j){
+      return j.status==="captions-failed"&&j.stage==="captions-error"&&!j.completedAt&&!j.youtubeVerified;
+    });
     if(!jobs.length)throw new Error("No caption-failed jobs found.");
     jobs.sort(function(x,y){return String(y.updatedAt||"").localeCompare(String(x.updatedAt||""))});
     var job=jobs[0];
