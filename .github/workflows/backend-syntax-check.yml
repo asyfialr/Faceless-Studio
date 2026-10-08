@@ -1,0 +1,17 @@
+name: Backend Syntax Check
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-syntax-check.yml'
+  workflow_dispatch:
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check backend JavaScript syntax
+        run: node --check backend/server.js
