@@ -999,7 +999,8 @@ async function cleanupCompletedAutopilotMedia(excludeProjectId){
   if(removed)console.log("[autopilot] storage guard cleaned completed media",removed,Math.round(bytes/1048576)+"MB");return {removed,bytes};
 }
 async function runAutopilotCaptionsWorker(){
-  const store=await readAutopilotJobs(),job=(store.jobs||[]).find(j=>j.stage==="awaiting-captions"&&j.status==="shorts-complete");if(!job)return null;
+  const store=await readAutopilotJobs(),job=(store.jobs||[]).filter(j=>j.stage==="awaiting-captions"&&j.status==="shorts-complete").sort((a,b)=>String(a.captionRecoveryAt||a.createdAt||"").localeCompare(String(b.captionRecoveryAt||b.createdAt||"")))[0];if(!job)return null;
+  console.log("[autopilot] captions worker claimed",job.id,job.projectId);
   job.status="running";job.stage="captions-rendering";job.updatedAt=new Date().toISOString();await writeFile(autopilotJobsPath,JSON.stringify(store,null,2));
   try{
     const path=join(storageRoot,job.projectId,"project.json"),meta=JSON.parse(await readFile(path,"utf8"));if(!meta.narration)throw new Error("Project narration is missing");
@@ -1169,7 +1170,7 @@ async function automaticAutopilotTick(){
     await recoverRetryableAutopilotFailures();
     await cleanupCompletedAutopilotMedia();
     if(result.enabled===true)await claimNextQueuedTopicAutomatically();
-    await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();await runAutopilotCaptionsWorker();await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
+    await runAutopilotScriptWorker();await runAutopilotVoiceWorker();await runAutopilotVisualPlanWorker();await runAutopilotVisualWorker();await runAutopilotLongRenderWorker();await runAutopilotShortsWorker();console.log("[autopilot] captions worker tick start");await runAutopilotCaptionsWorker();console.log("[autopilot] captions worker tick end");await runAutopilotMetadataThumbnailWorker();await runAutopilotYouTubeWorker();
     const store=await readAutopilotJobs(),active=(store.jobs||[]).filter(isAutopilotJobActive),latest=(store.jobs||[]).slice().sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))[0]||null;
     autopilotLastTickAt=new Date().toISOString();autopilotLastTickOk=true;autopilotLastTickError=null;
     console.log("[autopilot] health",JSON.stringify({tickStartedAt,lastTickAt:autopilotLastTickAt,activeJobs:active.length,latestJobId:latest?.id||null,latestStatus:latest?.status||null,latestStage:latest?.stage||null}));
