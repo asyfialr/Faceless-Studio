@@ -113,17 +113,17 @@ async function retryFailedCaptions(){
 }
 var retryCaptionButton=$("monitorRetryCaptions");if(retryCaptionButton)retryCaptionButton.addEventListener("click",retryFailedCaptions);
 
-async function refreshAutopilotEngine(){
+async function refreshAutopilotMonitorEngine(){
   var out=$("monitorEngine"),t=$("monitorEngineToggle");if(!out)return;
   try{var r=await fetch(API_BASE+"/api/autopilot/engine/status",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.message||d.error);out.textContent="Autopilot engine: "+(d.enabled?"RUNNING ✓":"PAUSED")+" • "+(d.config?.time||"19:00")+" "+(d.config?.timeZone||"America/New_York");if(t){t.disabled=false;t.dataset.action=d.enabled?"pause":"resume";t.textContent=d.enabled?"Pause Autopilot":"Resume Autopilot"}}catch(e){out.textContent="Autopilot engine: status unavailable";if(t){t.disabled=true;t.textContent="Autopilot unavailable"}}
 }
 async function setAutopilotEngine(action){
   var t=$("monitorEngineToggle");if(t){t.disabled=true;t.textContent=action==="pause"?"Pausing…":"Resuming…"}
-  try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e);await refreshAutopilotEngine()}
+  try{var x=await fetch(API_BASE+"/api/autopilot/engine/"+action,{method:"POST"}),d=await x.json();if(!x.ok)throw new Error(d.message||d.error);await refreshAutopilotMonitorEngine();await refreshAutopilotMonitor()}catch(e){$("monitorEngine").textContent="Autopilot control failed: "+(e.message||e);await refreshAutopilotMonitorEngine()}
 }
 function bindAutopilotEngineControls(){
   var t=$("monitorEngineToggle");if(t)t.onclick=function(){var action=t.dataset.action;if(action==="pause"||action==="resume")setAutopilotEngine(action)};
-  refreshAutopilotEngine();
+  refreshAutopilotMonitorEngine();
 }
 bindAutopilotEngineControls();
 setTimeout(refreshAutopilotEngine,1500);
