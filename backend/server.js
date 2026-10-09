@@ -284,12 +284,12 @@ async function executeCaptionRender(req,res){
   const ff=(args,label)=>new Promise((resolve,reject)=>{
     const cp=spawn(ffmpegPath,["-nostdin",...args]);let err="",settled=false,timedOut=false;
     // Allow long caption segments and concat operations; abort a stuck process.
-    const timeoutMs=10*60*1000;
+    const timeoutMs=label.includes(" segment ")?60*1000:10*60*1000;
     const timer=setTimeout(()=>{timedOut=true;cp.kill("SIGKILL")},timeoutMs);
     const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve()};
     cp.stderr.on("data",d=>{err=(err+d.toString()).slice(-2500)});
     cp.on("error",finish);
-    cp.on("close",(code,signal)=>timedOut?finish(new Error(label+" timed out after "+timeoutMs+"ms")):code===0?finish():finish(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))));
+    cp.on("close",(code,signal)=>timedOut?finish(new Error(label+" timed out after "+timeoutMs+"ms; ffmpeg stderr: "+err.slice(-1200))):code===0?finish():finish(new Error(label+" code="+code+" signal="+(signal||"none")+" "+err.slice(-850))));
   });
   const getSpeechWindows=async(audioPath,duration,count)=>{
     if(!count)return [];
@@ -316,7 +316,7 @@ async function executeCaptionRender(req,res){
       ctx.clearRect(0,0,w,rowH);ctx.font="700 "+fs+"px CaptionInter";ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(5,Math.round(fs*.16));ctx.strokeStyle="black";ctx.fillStyle="white";const lh=Math.round(fs*1.18),top=rowH/2-(Math.min(2,lines.length)-1)*lh/2;lines.slice(0,2).forEach((line,n)=>{const yy=top+n*lh;ctx.strokeText(line,w/2,yy,maxTextWidth);ctx.fillText(line,w/2,yy,maxTextWidth)});
       const img=join(captionScratch,`cap-${label}-${i}.png`),part=join(captionScratch,`cap-part-${label}-${i}.mp4`);await writeFile(img,canvas.toBuffer("image/png"));
       const st=Math.max(0,Math.min(duration,Number(bounds[i])||0)),next=Math.max(st,Math.min(duration,Number(bounds[i+1])||0)),len=Math.max(.18,next-st);const segmentStartedAt=Date.now();console.log("[captions] segment start",label,i+1,"of",chunks.length,"start",st.toFixed(3),"duration",len.toFixed(3));
-      await ff(["-y","-ss",st.toFixed(3),"-t",len.toFixed(3),"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-profile:v","baseline","-level","3.1","-pix_fmt","yuv420p","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-ar","44100","-ac","2","-t",len.toFixed(3),"-shortest","-movflags","+faststart",part],label+" segment "+(i+1));console.log("[captions] segment complete",label,i+1,"elapsedMs",Date.now()-segmentStartedAt);
+      await ff(["-y","-ss",st.toFixed(3),"-t",len.toFixed(3),"-i",input,"-loop","1","-i",img,"-filter_complex",`[0:v][1:v]overlay=(W-w)/2:${y}:shortest=1:repeatlast=0[v]`,"-map","[v]","-map","0:a?","-c:v","libx264","-profile:v","baseline","-level","3.1","-pix_fmt","yuv420p","-preset","ultrafast","-crf","31","-threads","1","-c:a","aac","-b:a","96k","-ar","44100","-ac","2","-t",len.toFixed(3),"-shortest","-movflags","+faststart",part],label+" segment "+(i+1));console.log("[captions] segment complete",label,i+1,"elapsedMs",Date.now()-segmentStartedAt);
       await rm(img,{force:true}).catch(()=>{});parts.push(part);
     }
     const list=join(captionScratch,`concat-${label}.txt`);await writeFile(list,parts.map(p=>"file '"+p.replace(/'/g,"'\\''")+"'").join("\n"));
