@@ -299,7 +299,6 @@ async function buildScriptDraft(){
     $("generateScript").textContent="Try Again";
   }finally{$("generateScript").disabled=false}
 }
-function escapeHtml(v){return String(v).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]})}
 $("generateScript").onclick=buildScriptDraft;
 
 function drawProduction(active=-1,done=-1){
