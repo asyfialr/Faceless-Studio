@@ -340,18 +340,49 @@ async function executeCaptionRender(req,res){
     let longSpeechBounds=[];
     if(timedWords.length>=3){
       longChunks=[];longSpeechBounds=[];
-      const usableTimedWords=timedWords.filter(x=>x.start<longDuration+.25);for(let i=0;i<usableTimedWords.length;i+=12){const group=usableTimedWords.slice(i,i+12),next=usableTimedWords[i+12];if(!group.length)continue;longChunks.push(group.map(x=>x.word).join(" "));if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));longSpeechBounds.push(Math.min(longDuration,next?next.start:group[group.length-1].end))}
+      const usableTimedWords=timedWords.filter(x=>x.start<longDuration+.25);
+      for(let i=0;i<usableTimedWords.length;i+=12){
+        const group=usableTimedWords.slice(i,i+12),next=usableTimedWords[i+12];if(!group.length)continue;
+        longChunks.push(group.map(x=>x.word).join(" "));
+        if(!longSpeechBounds.length)longSpeechBounds.push(Math.max(0,group[0].start));
+        longSpeechBounds.push(Math.min(longDuration,next?next.start:group[group.length-1].end));
+      }
+    }else if(voiceAvailable){
+      longSpeechBounds=await getSpeechWindows(voicePath,longDuration,longChunks.length);
     }
     await render(join(projectDir,"long.mp4"),join(projectDir,"long-captioned.mp4"),longChunks,longDuration,1280,34,520,"long",longSpeechBounds);
     const outputs=[];
+    const selection=meta.shortsSelection&&typeof meta.shortsSelection==="object"?meta.shortsSelection:{};
+    const selectedStarts=Array.isArray(selection.starts)?selection.starts:[];
+    const shortDuration=Math.min(24,Math.max(2,Number(selection.duration)||20));
     for(let i=0;i<3;i++){
-      const clipStart=i*20,clipEnd=clipStart+20;let use=[],shortBounds=[];
+      // Shorts are sampled from specific positions in long.mp4; caption timing must use
+      // that same source interval instead of assuming clips start at 0, 20 and 40 seconds.
+      const clipStart=Math.max(0,Number(selectedStarts[i])||0);
+      const clipEnd=Math.min(longDuration,clipStart+shortDuration);
+      const actualShortDuration=Math.max(1,clipEnd-clipStart);
+      let use=[],shortBounds=[];
       if(timedWords.length>=3){
         const sw=timedWords.filter(x=>x.start<clipEnd&&x.end>clipStart);
-        for(let k=0;k<sw.length;k+=5){const group=sw.slice(k,k+5),next=sw[k+5];if(!group.length)continue;use.push(group.map(x=>x.word).join(" "));if(!shortBounds.length)shortBounds.push(Math.max(0,group[0].start-clipStart));shortBounds.push(Math.min(20,Math.max(0,(next?next.start:group[group.length-1].end)-clipStart)))}
+        for(let k=0;k<sw.length;k+=5){
+          const group=sw.slice(k,k+5),next=sw[k+5];if(!group.length)continue;
+          use.push(group.map(x=>x.word).join(" "));
+          if(!shortBounds.length)shortBounds.push(Math.max(0,group[0].start-clipStart));
+          shortBounds.push(Math.min(actualShortDuration,Math.max(0,(next?next.start:group[group.length-1].end)-clipStart)));
+        }
       }
-      if(!use.length){const sw=words.slice(i*28,(i+1)*28);for(let k=0;k<sw.length;k+=4)use.push(sw.slice(k,k+4).join(" "));if(!use.length)use=[words.slice(0,4).join(" ")];shortBounds=[]}
-      await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,20,720,46,820,"short"+(i+1),shortBounds);outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4")
+      if(!use.length){
+        // No validated word timestamps: select the narration slice matching the actual
+        // source interval, not arbitrary fixed blocks for Short 1/2/3.
+        const from=Math.max(0,Math.min(words.length-1,Math.floor(words.length*(clipStart/Math.max(1,longDuration)))));
+        const to=Math.max(from+1,Math.min(words.length,Math.ceil(words.length*(clipEnd/Math.max(1,longDuration)))));
+        const sw=words.slice(from,to);
+        for(let k=0;k<sw.length;k+=4)use.push(sw.slice(k,k+4).join(" "));
+        if(!use.length)use=[words.slice(0,4).join(" ")];
+        shortBounds=[];
+      }
+      await render(join(projectDir,`short-${i+1}.mp4`),join(projectDir,`short-${i+1}-captioned.mp4`),use,actualShortDuration,720,46,820,"short"+(i+1),shortBounds);
+      outputs.push("/media/"+projectId+"/short-"+(i+1)+"-captioned.mp4");
     }
     const longUrl="/media/"+projectId+"/long-captioned.mp4",metaPath=join(projectDir,"project.json");let meta=JSON.parse(await readFile(metaPath,"utf8"));meta.longVideoUrl=longUrl;meta.shorts=outputs;meta.captions=true;meta.captionEngine="segmented-overlay";meta.captionTiming=timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted");meta.updatedAt=new Date().toISOString();await writeFile(metaPath,JSON.stringify(meta,null,2));
     res.json({ok:true,longVideoUrl:longUrl,shorts:outputs,captionEngine:"segmented-overlay",captionTiming:timedWords.length?"validated-word-timestamps":(voiceAvailable?"voice-duration-weighted":"video-duration-weighted")});
